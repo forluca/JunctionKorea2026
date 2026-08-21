@@ -253,12 +253,6 @@ const UploadController = {
         UIRenderer.setAppClass('state-upload');
     },
 
-    // 여행 목록에서 진입하는 여행 추가 전용 흐름입니다.
-    openTripUpload: () => { UploadController.openUpload('trip', 'state-list'); },
-
-    // 타임라인에서 진입하는 일정 추가 전용 흐름입니다.
-    openScheduleUpload: () => { UploadController.openUpload('schedule', 'state-trip'); },
-
     // 업로드 상태를 초기화하고 진입했던 화면으로 돌아갑니다.
     closeUpload: () => {
         const returnState = UploadController.returnState;
@@ -363,8 +357,8 @@ document.addEventListener('DOMContentLoaded', () => {
     MapController.init();
     UIRenderer.renderTripList();
     UploadController.initDragAndDrop();
-    document.getElementById('add-trip-button').addEventListener('click', UploadController.openTripUpload);
-    document.getElementById('add-schedule-button').addEventListener('click', UploadController.openScheduleUpload);
+    document.getElementById('add-trip-button').addEventListener('click', () => UploadController.openUpload('trip', 'state-list'));
+    document.getElementById('add-schedule-button').addEventListener('click', () => UploadController.openUpload('schedule', 'state-trip'));
     document.getElementById('close-timeline-button').addEventListener('click', UIRenderer.closeTimeline);
     document.getElementById('close-upload-button').addEventListener('click', UploadController.closeUpload);
     document.getElementById('file-input').addEventListener('change', event => UploadController.handleFiles(event.target.files));
