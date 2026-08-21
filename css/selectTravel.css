@@ -1,0 +1,195 @@
+/* 스크롤바를 작게 만들어 패널 내부 콘텐츠를 더 깔끔하게 표시합니다. */
+.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+
+/* 패널이 전환될 때 너비와 투명도가 자연스럽게 바뀝니다. */
+#trip-panel { transition: width 0.3s ease-in-out; }
+#item-panel {
+    transition: width 0.3s ease-in-out, opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+    overflow: hidden;
+    will-change: width, opacity, transform;
+}
+
+/* 상세 데이터가 준비되는 동안 기존 텍스트를 숨기고 로딩 화면만 표시합니다. */
+#item-loading { display: none; }
+#item-panel.is-loading #item-header,
+#item-panel.is-loading #item-content { opacity: 0; }
+#item-panel.is-loading #item-loading { display: flex; }
+
+/* 움직임 없이 상세 화면의 형태만 미리 보여주는 정적 스켈레톤입니다. */
+.detail-skeleton-title,
+.detail-skeleton-subtitle,
+.detail-skeleton-line,
+.detail-skeleton-circle {
+    background: #e5e7eb;
+}
+
+.detail-skeleton-title {
+    width: 70%;
+    height: 22px;
+    border-radius: 6px;
+}
+
+.detail-skeleton-subtitle {
+    width: 45%;
+    height: 12px;
+    border-radius: 4px;
+}
+
+.detail-skeleton-card {
+    height: 270px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.detail-skeleton-circle {
+    width: 128px;
+    height: 128px;
+    margin: 0 auto 20px;
+    border-radius: 12px;
+}
+
+.detail-skeleton-line {
+    height: 12px;
+    margin-top: 12px;
+    border-radius: 4px;
+}
+
+.detail-skeleton-line-wide { width: 80%; }
+.detail-skeleton-line-short { width: 55%; }
+
+/* 여행 목록을 위한 정적 카드 스켈레톤입니다. */
+.list-skeleton-card {
+    height: 104px;
+    padding: 16px;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    background: #ffffff;
+}
+
+.list-skeleton-title,
+.list-skeleton-line,
+.timeline-skeleton-title,
+.timeline-skeleton-text { background: #e5e7eb; border-radius: 4px; }
+.list-skeleton-title { width: 65%; height: 18px; }
+.list-skeleton-line { width: 45%; height: 11px; margin-top: 16px; }
+
+/* 일정 타임라인을 위한 정적 카드 스켈레톤입니다. */
+.timeline-skeleton-line {
+    position: absolute;
+    left: 28px;
+    top: 24px;
+    bottom: 24px;
+    width: 2px;
+    background: #e5e7eb;
+}
+
+.timeline-skeleton-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 90px;
+    z-index: 1;
+}
+
+.timeline-skeleton-dot {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border: 4px solid #f9fafb;
+    border-radius: 9999px;
+    background: #d1d5db;
+}
+
+.timeline-skeleton-card {
+    flex: 1;
+    height: 76px;
+    padding: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #ffffff;
+}
+
+.timeline-skeleton-title { width: 42%; height: 12px; }
+.timeline-skeleton-text { width: 68%; height: 10px; margin-top: 13px; }
+
+/* 지도는 패널이 열리고 닫혀도 같은 화면 위치를 유지합니다. */
+.map-area {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 64px;
+    width: calc(100vw - 64px);
+    height: 100vh;
+    min-height: 100vh;
+    display: block;
+    z-index: 0;
+}
+
+/* Google Maps가 부모 영역의 실제 크기를 정확히 계산하도록 합니다. */
+#map,
+#map-fallback {
+    width: 100%;
+    height: 100%;
+}
+
+#map { width: calc(100vw - 64px); z-index: 0; }
+
+/* 현재 상세 정보가 열린 일정 블록을 강조합니다. */
+.timeline-item-selected > div:last-child {
+    border-color: #1e3a8a;
+    background-color: #eff6ff;
+    box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.15), 0 4px 10px rgba(30, 58, 138, 0.12);
+}
+
+#map-fallback { z-index: 1; }
+
+/* 여행 목록 상태에서는 목록 패널만 표시합니다. */
+.state-list #list-panel { display: flex; width: 400px; }
+.state-list #trip-panel,
+.state-list #item-panel,
+.state-list #upload-panel { display: none; }
+
+/* 타임라인 상태에서는 여행 일정 패널을 표시합니다. */
+.state-trip #trip-panel { display: flex; width: 400px; }
+.state-trip #item-panel { display: flex; width: 0; opacity: 0; border-width: 0; transform: translateX(24px); }
+.state-trip #list-panel,
+.state-trip #upload-panel { display: none; }
+
+/* 일정 상세 상태에서는 타임라인과 상세 패널을 함께 표시합니다. */
+.state-item #trip-panel { display: flex; width: 280px; }
+.state-item #item-panel { display: flex; width: 450px; opacity: 1; border-left-width: 1px; transform: translateX(0); }
+.state-item #list-panel,
+.state-item #upload-panel { display: none; }
+
+/* 파일 업로드 상태에서는 업로드 패널만 표시합니다. */
+.state-upload #upload-panel { display: flex; width: 400px; }
+.state-upload #list-panel,
+.state-upload #trip-panel,
+.state-upload #item-panel { display: none; }
+
+/* 파일을 드래그하고 있는 동안 드롭 영역을 강조합니다. */
+.drag-active { background-color: #eff6ff; border-color: #3b82f6 !important; }
+
+/* 긴 제목과 파일명이 레이아웃을 밀어내지 않도록 줄임표로 표시합니다. */
+.truncate-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 데이터를 불러오는 동안 표시할 로딩 스피너입니다. */
+.loader {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #1e40af;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
