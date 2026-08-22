@@ -97,8 +97,8 @@ create_event(
 
 if __name__ == "__main__":
     create_event(
-        title="Calendar API Test2",
-        start_time="2026-08-23T15:00:00+09:00",
+        title="Junction Korea",
+        start_time="2026-08-22T15:00:00+09:00",
         end_time="2026-08-23T16:00:00+09:00",
     )
 
