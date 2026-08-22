@@ -9,6 +9,7 @@ class DocState(TypedDict, total=False):
     target_type: str          # "trip" | "schedule"
     trip_id: str | None
     user_text: str | None     # 업로드 시 함께 온 사용자 프롬프트
+    trip_start_date: str | None  # trip 플로우: 여행 시작일 (Day N → 절대 날짜 계산 기준)
     dry_run: bool             # True면 Storage/DB에 쓰지 않고 미리보기만
 
     # ── ingest ──

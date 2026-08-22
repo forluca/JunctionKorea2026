@@ -378,6 +378,10 @@ def index():
                     f'''<div class="field">
                           <span class="field-name">doc_type <span class="opt">— 추출 스키마 선택</span></span>
                           <select data-field="doc_type">{doc_type_options}</select>
+                        </div>
+                        <div class="field">
+                          <span class="field-name">instruction <span class="opt">— 추출 지침 system 프롬프트 (선택)</span></span>
+                          <input type="text" data-field="instruction" placeholder="예: 날짜는 YYYY년 MM월 DD일 형식으로 / 금액은 숫자만">
                         </div>''', wide=True)}
       {_tester_card('card-instruct', 'Instruct', 'Solar LLM에게 문서 기반 지시 — 요약·번역·Q&A (내부: Parse→Solar)',
                     '''<div class="field">
@@ -392,7 +396,7 @@ def index():
     <h2 class="section">전체 파이프라인 — 메인 API로 실행, DB에 기록됨</h2>
     <div class="grid">
       {_tester_card('card-pipeline', 'POST /api/documents/parse',
-                    'ingest → classify → (parse ∥ extract) → orchestrate → act · 10~20초 소요',
+                    'ingest → [Studio Agent ∥ QR디코딩] → act · 30~45초 소요',
                     f'''<div class="field">
                           <span class="field-name">targetType <span class="req">*</span></span>
                           <select data-field="targetType">
@@ -449,11 +453,17 @@ async def test_parse(document: UploadFile = File(...)):
 
 
 @app.post("/test/extract")
-async def test_extract(document: UploadFile = File(...), doc_type: str = Form("other")):
+async def test_extract(document: UploadFile = File(...), doc_type: str = Form("other"),
+                       instruction: str = Form("")):
     data, _, mime = await _read(document)
     schema = EXTRACTION_SCHEMAS.get(doc_type, EXTRACTION_SCHEMAS["other"])
-    extracted = await upstage.extract_information(data, mime, f"{doc_type}_fields", schema)
-    return JSONResponse({"doc_type": doc_type, "extracted": extracted})
+    extracted = await upstage.extract_information(
+        data, mime, f"{doc_type}_fields", schema,
+        system_instruction=instruction.strip() or None,
+    )
+    return JSONResponse({"doc_type": doc_type,
+                         "instruction_used": bool(instruction.strip()),
+                         "extracted": extracted})
 
 
 @app.post("/test/instruct")

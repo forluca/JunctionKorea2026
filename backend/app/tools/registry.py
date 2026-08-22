@@ -163,7 +163,12 @@ def _iso_or_none(value: Any) -> str | None:
 
 @tool("add_itinerary_bulk")
 def add_itinerary_bulk(args: dict, state: dict) -> dict:
-    """여행 계획 문서에서 정규화된 일정 목록을 일괄 등록한다 (건별 충돌 검사 포함)."""
+    """여행 계획 문서에서 정규화된 일정 목록을 일괄 등록한다.
+
+    충돌 검사는 **일괄 등록 전에 이미 존재하던 일정**하고만 수행한다 —
+    계획서 내부의 인접 일정끼리는 (종료시각 +2h 추정 규칙 때문에) 서로
+    겹침 판정이 나기 쉬운데, 계획서는 내부적으로 일관된 문서이므로 제외.
+    """
     trip_id = state.get("trip_id")
     if not trip_id:
         return {"status": "error", "detail": "trip_id missing"}
@@ -172,12 +177,31 @@ def add_itinerary_bulk(args: dict, state: dict) -> dict:
         return {"status": "error", "detail": "itinerary_items empty"}
 
     db = get_db()
+    # 일괄 등록 전 기존 일정 스냅샷 (배치 내부끼리는 충돌 검사 제외)
+    existing = (db.table("items").select("id,title,starts_at,ends_at")
+                .eq("trip_id", trip_id).execute().data or [])
+
+    def conflicts_with_existing(starts_at, ends_at) -> list[dict]:
+        s = _parse_dt(starts_at)
+        if s is None:
+            return []
+        e = _parse_dt(ends_at) or (s + timedelta(hours=2))
+        out = []
+        for row in existing:
+            es = _parse_dt(row.get("starts_at"))
+            if es is None:
+                continue
+            ee = _parse_dt(row.get("ends_at")) or (es + timedelta(hours=2))
+            if es < e and ee > s:
+                out.append({"id": row["id"], "title": row.get("title")})
+        return out
+
     item_ids: list[str] = []
     all_conflicts: list[dict] = []
     for it in items:
         starts_at = _iso_or_none(it.get("starts_at"))
         ends_at = _iso_or_none(it.get("ends_at"))
-        conflicts = check_conflicts(trip_id, starts_at, ends_at)
+        conflicts = conflicts_with_existing(starts_at, ends_at)
         row = {
             "trip_id": trip_id,
             "document_id": state.get("document_id"),

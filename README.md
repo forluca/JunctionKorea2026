@@ -109,7 +109,7 @@ cloudflared tunnel --url http://localhost:8001
 - 분석 시작 함수: `UploadController.startParsing()`
 - 요청 형식: `multipart/form-data`
 - 요청 필드: `document`, `targetType`, `tripId`, `text`
-- `targetType`: `schedule` — 바우처·티켓 1건 업로드(기존 여행에 일정 1개 생성, 구현 완료) / `trip` — 전체 여행 계획 문서 업로드(새 여행 생성, 처리 플로우는 미구현·자리만 잡힘). 요청의 targetType으로 명시적 분기
+- `targetType`: `schedule` — 바우처·티켓 1건 업로드(기존 여행에 일정 1개 생성) / `trip` — 전체 여행 계획 문서 업로드(새 여행 + 일정 여러 개 일괄 생성, `startDate`로 Day N 기준일 지정). 요청의 targetType으로 명시적 분기 — 둘 다 구현 완료
 - 응답 데이터: 문서 유형, 추출된 여행·일정 정보, 충돌 후보, 원본 문서 식별자
 - 저장 결과: 분석 결과를 기준으로 여행 또는 일정 생성
 
