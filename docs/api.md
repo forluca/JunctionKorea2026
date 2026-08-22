@@ -101,7 +101,7 @@ curl -X POST http://127.0.0.1:8000/api/documents/parse \
 - `extracted`의 필드 구성은 docType마다 다름 ([backend/app/graph/schemas.py](../backend/app/graph/schemas.py) 참고).
 - `notes`: 사용자가 알아둬야 할 사항의 **한국어 문장 배열** — 예약 확정 상태, 현장 교환 필요 여부, 취소기한, 잔글씨 주의사항이 전부 여기로 통합됨. `items.notes`(jsonb)에 저장되어 일정 상세 조회에서도 반환. UI 로직용 구조화 값은 별도 필드 사용: 취소기한 D-day → `item.cancellation_deadline`(DB), 충돌 배지 → `hasConflict`/`conflictMsg`.
 - `targetType=trip`이면 여행 제목·기간이 문서에서 자동 생성됨. 응답의 `trip`으로 갱신된 값 확인.
-- `actions`에서 `status: "stub"`은 아직 미구현 툴(캘린더/알림/비용) — 담당자 구현 후 `done`으로 바뀜.
+- `actions`의 툴 상태: `register_calendar`는 Google Calendar 연동 완료(단, `backend/credentials.json` + 최초 OAuth 인증 필요 — 없으면 `error`로 표시되고 파이프라인은 계속됨). `set_reminder`/`record_expense`는 아직 `stub`.
 
 ### 에러
 

@@ -188,11 +188,33 @@ def add_itinerary_bulk(args: dict, state: dict) -> dict:
 
 @tool("register_calendar")
 def register_calendar(args: dict, state: dict) -> dict:
-    """TODO(담당자): 캘린더 등록 (예: Google Calendar API).
+    """Google Calendar에 일정 등록 (backend/calendar_tool.py 사용).
 
-    args 예시: {"title": ..., "starts_at": ISO8601, "ends_at": ISO8601, "location": ...}
+    사전 준비: backend/에 credentials.json 배치 후 `python calendar_tool.py`를
+    한 번 실행해 브라우저 OAuth 인증 → token.json 생성. 그 전에는 error로 스킵됨.
     """
-    return {"status": "stub", "detail": "calendar registration not implemented yet", "args": args}
+    fields = state.get("item_fields") or {}
+    title = args.get("title") or fields.get("title") or "여행 일정"
+    start = _parse_dt(args.get("starts_at") or fields.get("starts_at"))
+    if start is None:
+        return {"status": "skipped", "detail": "시작 시각이 없어 캘린더 등록 생략"}
+    end = _parse_dt(args.get("ends_at") or fields.get("ends_at")) or (start + timedelta(hours=2))
+
+    try:
+        import calendar_tool  # backend/calendar_tool.py (팀원 구현)
+
+        event = calendar_tool.create_event(
+            title=title,
+            start_time=start.strftime("%Y-%m-%dT%H:%M:%S"),
+            end_time=end.strftime("%Y-%m-%dT%H:%M:%S"),
+            description="\n".join(state.get("notes") or []) or None,
+            location=args.get("location") or fields.get("location"),
+        )
+        return {"status": "done", "event_link": event.get("htmlLink")}
+    except FileNotFoundError:
+        return {"status": "error",
+                "detail": "credentials.json 없음 — backend/에 Google OAuth 키를 두고 "
+                          "`python calendar_tool.py`로 최초 인증(token.json 생성)이 필요합니다."}
 
 
 @tool("set_reminder")
