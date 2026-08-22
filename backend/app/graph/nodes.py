@@ -64,7 +64,7 @@ async def parse(state: DocState) -> dict:
     parsed = await upstage.parse_document(
         state["file_bytes"], state["file_name"], state["mime_type"]
     )
-    decoded = decode_barcodes(parsed["elements"])
+    decoded = decode_barcodes(state["file_bytes"], state["mime_type"], parsed["elements"])
     qr_codes = [d["value"] for d in decoded]
     qr_images: list[dict] = []
     if not state.get("dry_run"):

@@ -16,6 +16,7 @@ import httpx
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from app import config
 from app.db import get_db
 from app.graph.schemas import CATEGORIES, EXTRACTION_SCHEMAS
 from app.services import upstage
@@ -288,9 +289,11 @@ function setupCard(cardId, endpoint) {
   });
 
   btn.addEventListener('click', async () => {
-    if (!file) { status.className = 'status err'; status.textContent = '파일을 먼저 선택하세요.'; return; }
+    if (!file && !card.dataset.fileOptional) {
+      status.className = 'status err'; status.textContent = '파일을 먼저 선택하세요.'; return;
+    }
     const fd = new FormData();
-    fd.append('document', file);
+    if (file) fd.append('document', file);
     card.querySelectorAll('[data-field]').forEach(el => {
       if (el.type === 'checkbox') {
         if (el.checked) fd.append(el.dataset.field, el.value || 'true');
@@ -328,6 +331,7 @@ function setupCard(cardId, endpoint) {
 setupCard('card-classify', '/test/classify');
 setupCard('card-parse', '/test/parse');
 setupCard('card-extract', '/test/extract');
+setupCard('card-instruct', '/test/instruct');
 setupCard('card-pipeline', '/test/pipeline');
 </script>
 """
@@ -335,18 +339,21 @@ setupCard('card-pipeline', '/test/pipeline');
 
 def _tester_card(card_id: str, title: str, desc: str, extra_controls: str = "",
                  button_label: str = "실행", wide: bool = False,
-                 button_own_row: bool = False) -> str:
+                 button_own_row: bool = False, file_optional: bool = False) -> str:
     btn = f'<button class="run"><span class="spinner"></span>{button_label}</button>'
     if button_own_row:
         controls = (f'<div class="controls">{extra_controls}</div>'
                     f'<div class="controls" style="justify-content: flex-end">{btn}</div>')
     else:
         controls = f'<div class="controls">{extra_controls} {btn}</div>'
+    drop_hint = "document 필드 · PDF / 이미지(JPG·PNG·HEIC) / DOCX / XLSX / HWP"
+    if file_optional:
+        drop_hint += " · 선택사항 (없으면 문서 없이 실행)"
     return f"""
-    <div class="card{' wide' if wide else ''}" id="{card_id}">
+    <div class="card{' wide' if wide else ''}" id="{card_id}"{' data-file-optional="1"' if file_optional else ''}>
       <div class="card-head"><span class="card-title">{title}</span>
         <span class="card-desc">{desc}</span></div>
-      <div class="drop">문서를 끌어다 놓거나 클릭해서 선택<small>document 필드 · PDF / 이미지(JPG·PNG·HEIC) / DOCX / XLSX / HWP</small></div>
+      <div class="drop">문서를 끌어다 놓거나 클릭해서 선택<small>{drop_hint}</small></div>
       <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png,.bmp,.tif,.tiff,.heic,.heif,.docx,.pptx,.xlsx,.hwp,.hwpx">
       {controls}
       <div class="status"></div>
@@ -372,6 +379,12 @@ def index():
                           <span class="field-name">doc_type <span class="opt">— 추출 스키마 선택</span></span>
                           <select data-field="doc_type">{doc_type_options}</select>
                         </div>''', wide=True)}
+      {_tester_card('card-instruct', 'Instruct', 'Solar LLM에게 문서 기반 지시 — 요약·번역·Q&A (내부: Parse→Solar)',
+                    '''<div class="field">
+                          <span class="field-name">prompt <span class="req">*</span><span class="opt"> — 지시문</span></span>
+                          <input type="text" data-field="prompt" placeholder="예: 이 문서를 3줄로 요약해줘 / 체크인 몇 시야? / 영어로 번역해줘">
+                        </div>''',
+                    button_label='실행', wide=True, file_optional=True)}
     </div>
     <p class="hint">분류 카테고리:</p>
     <div class="chips">{category_chips}</div>
@@ -441,6 +454,31 @@ async def test_extract(document: UploadFile = File(...), doc_type: str = Form("o
     schema = EXTRACTION_SCHEMAS.get(doc_type, EXTRACTION_SCHEMAS["other"])
     extracted = await upstage.extract_information(data, mime, f"{doc_type}_fields", schema)
     return JSONResponse({"doc_type": doc_type, "extracted": extracted})
+
+
+@app.post("/test/instruct")
+async def test_instruct(prompt: str = Form(...), document: UploadFile | None = File(None)):
+    """Instruct — 문서가 있으면 Parse로 읽은 내용을 근거로, 없으면 순수 채팅으로 Solar 실행."""
+    doc_text = ""
+    if document is not None and document.filename:
+        data, name, mime = await _read(document)
+        parsed = await upstage.parse_document(data, name, mime)
+        doc_text = (parsed.get("text") or "")[:8000]
+
+    messages = []
+    if doc_text:
+        messages.append({
+            "role": "system",
+            "content": "아래 문서 내용을 근거로 사용자 요청을 수행하라. "
+                       "문서에 없는 내용은 지어내지 말고 모른다고 답하라.\n\n[문서]\n" + doc_text,
+        })
+    messages.append({"role": "user", "content": prompt})
+    answer = await upstage.solar_chat(messages)
+    return JSONResponse({
+        "model": config.LLM_MODEL,
+        "document_used": bool(doc_text),
+        "answer": answer,
+    })
 
 
 @app.post("/test/pipeline")
