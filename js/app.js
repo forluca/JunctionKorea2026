@@ -60,6 +60,9 @@ const MapController = {
                 position: { lat: 48.8566, lng: 2.3522 },
                 title: '파리 여행지'
             });
+            window.addEventListener('resize', () => {
+                google.maps.event.trigger(map, 'resize');
+            });
             document.getElementById('map').classList.remove('hidden');
             document.getElementById('map-fallback').classList.add('hidden');
         };

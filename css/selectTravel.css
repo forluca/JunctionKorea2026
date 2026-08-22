@@ -127,6 +127,7 @@
     height: 100vh;
     min-height: 100vh;
     display: block;
+    flex: none;
     z-index: 0;
 }
 
@@ -137,7 +138,7 @@
     height: 100%;
 }
 
-#map { width: calc(100vw - 464px); z-index: 0; }
+#map { z-index: 0; }
 
 /* 현재 상세 정보가 열린 일정 블록을 강조합니다. */
 .timeline-item-selected > div:last-child {
