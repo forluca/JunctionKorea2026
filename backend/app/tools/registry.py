@@ -131,10 +131,26 @@ def build_item_row(state: dict) -> tuple[dict, list[dict]]:
 
 @tool("add_to_itinerary")
 def add_to_itinerary(args: dict, state: dict) -> dict:
-    """추출·정규화된 필드로 items 행을 만들고 충돌을 검사한다."""
-    if not state.get("trip_id"):
+    """추출·정규화된 필드로 items 행을 만들고 충돌을 검사한다.
+
+    충돌 정책: 기존 일정과 시간이 겹치면 저장하지 않고 거부(rejected)한다.
+    이후 액션(캘린더 등록 등)도 act 노드에서 함께 중단된다.
+    """
+    trip_id = state.get("trip_id")
+    if not trip_id:
         return {"status": "error", "detail": "trip_id missing"}
     row, conflicts = build_item_row(state)
+
+    # 중복 검사: 같은 여행에 같은 예약번호가 이미 있으면 같은 문서를 다시 올린 것
+    if row.get("booking_ref"):
+        dup = (get_db().table("items").select("id,title")
+               .eq("trip_id", trip_id).eq("booking_ref", row["booking_ref"])
+               .execute().data or [])
+        if dup:
+            return {"status": "rejected", "reason": "duplicate",
+                    "conflicts": dup, "detail": "문서가 중복되었습니다."}
+
+    # 시간 겹침(overlap)은 저장하되 has_conflict/conflict_msg로 표시만 한다
     res = get_db().table("items").insert(row).execute()
     item_id = res.data[0]["id"]
     return {"status": "done", "item_id": item_id, "conflicts": conflicts}
@@ -209,21 +225,13 @@ def register_calendar(args: dict, state: dict) -> dict:
             end_time=end.strftime("%Y-%m-%dT%H:%M:%S"),
             description="\n".join(state.get("notes") or []) or None,
             location=args.get("location") or fields.get("location"),
+            reminder_minutes=60,  # 리마인드 통합: 일정 1시간 전 팝업 알림
         )
         return {"status": "done", "event_link": event.get("htmlLink")}
     except FileNotFoundError:
         return {"status": "error",
                 "detail": "credentials.json 없음 — backend/에 Google OAuth 키를 두고 "
                           "`python calendar_tool.py`로 최초 인증(token.json 생성)이 필요합니다."}
-
-
-@tool("set_reminder")
-def set_reminder(args: dict, state: dict) -> dict:
-    """TODO(담당자): 알림 예약 (예: 취소기한 D-1, 입장 1시간 전).
-
-    args 예시: {"remind_at": ISO8601, "message": ...}
-    """
-    return {"status": "stub", "detail": "reminder not implemented yet", "args": args}
 
 
 @tool("record_expense")

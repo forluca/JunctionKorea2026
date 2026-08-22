@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 
 from app import config
 from app.db import ensure_bucket, get_db
@@ -115,6 +116,26 @@ async def parse_document(
             "actions": result.get("action_results", []),
         }
 
+    # 충돌/중복으로 거부된 경우: 409 + 프론트용 에러 메시지
+    add_res = next(
+        (r for r in result.get("action_results", [])
+         if r.get("tool") == "add_to_itinerary" and r.get("status") == "rejected"),
+        None,
+    )
+    if add_res:
+        return JSONResponse(
+            {
+                "error": "rejected",
+                "reason": add_res.get("reason", "overlap"),  # duplicate | overlap
+                "message": add_res.get("detail", "일정을 추가할 수 없습니다."),
+                "conflicts": add_res.get("conflicts", []),
+                "documentId": result.get("document_id"),
+                "docType": result.get("doc_type"),
+                "notes": result.get("notes", []),
+            },
+            status_code=409,
+        )
+
     # 여행 제목(새 여행일 때)과 기간을 일정 기준으로 갱신
     item_fields = result.get("item_fields") or {}
     if created_trip is not None and item_fields.get("trip_title"):
@@ -194,9 +215,18 @@ async def get_item(item_id: str):
     r = res.data[0]
     return {
         "id": r["id"],
+        "tripId": r.get("trip_id"),
+        "documentId": r.get("document_id"),
+        "type": r.get("type"),
         "title": r.get("title"),
         "timeStr": _time_range(r.get("starts_at"), r.get("ends_at")),
+        "startsAt": r.get("starts_at"),
+        "endsAt": r.get("ends_at"),
+        "location": r.get("location") or "",
         "price": r.get("price"),
+        "currency": r.get("currency") or "",
+        "bookingRef": r.get("booking_ref") or "",
+        "cancellationDeadline": r.get("cancellation_deadline"),
         "hasConflict": bool(r.get("has_conflict")),
         "conflictDetail": r.get("conflict_msg") or "",
         "qrCodeStr": r.get("qr_code") or r.get("booking_ref") or "",
@@ -226,12 +256,17 @@ def _signed_qr_images(qr_images: list | None) -> list[dict]:
 def _trip_out(t: dict | None) -> dict | None:
     if not t:
         return None
+    # status는 저장값이 아니라 조회 시점 계산: 여행 종료일이 지났으면 past, 아니면 active
+    # (여행 전/여행 중/종료일 당일 = active, end_date 없음(빈 여행) = active)
+    end_date = t.get("end_date")
+    today = datetime.now().date().isoformat()
+    status = "past" if end_date and end_date < today else "active"
     return {
         "id": t["id"],
         "title": t.get("title"),
         "startDate": t.get("start_date"),
-        "endDate": t.get("end_date"),
-        "status": t.get("status", "active"),
+        "endDate": end_date,
+        "status": status,
     }
 
 

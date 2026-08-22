@@ -34,7 +34,6 @@ async def ingest(state: DocState) -> dict:
         {"content-type": state["mime_type"]},
     )
     row = {
-        "trip_id": state.get("trip_id"),
         "file_name": state["file_name"],
         "mime_type": state["mime_type"],
         "storage_path": storage_path,
@@ -159,7 +158,7 @@ _ORCH_SCHEMA = {
                 "properties": {
                     "tool": {
                         "type": "string",
-                        "enum": ["add_to_itinerary", "register_calendar", "set_reminder", "record_expense"],
+                        "enum": ["add_to_itinerary", "register_calendar", "record_expense"],
                     },
                     "args": {"type": "object"},
                 },
@@ -173,8 +172,9 @@ _ORCH_SCHEMA = {
 _ORCH_SYSTEM = """너는 여행 문서 처리 에이전트의 orchestrator다.
 분류된 문서 유형과 추출된 필드를 보고 다음을 수행한다:
 1. 일정 아이템으로 정규화 (제목, 시작/종료 시각 ISO 8601, 장소, 한 줄 요약)
-   - 제목은 문서 유형에 맞게: hotel → "○○호텔 체크인", transportation → "KE937 인천→비엔나",
-     tour → 그냥 명소/공연 이름 (예: "사그라다 파밀리아 입장"). "체크인"은 hotel에만 쓴다.
+   - 제목은 반드시 이 문서에 실제로 등장하는 이름으로 만든다. 유형별 형식:
+     hotel → "<문서의 호텔명> 체크인" / transportation → "<편명> <출발지>→<도착지>" /
+     tour → 문서의 명소·공연·투어 이름 그대로. "체크인"은 hotel에만 쓴다.
    - 왕복 교통편이면 **가는 편만** 일정으로 만든다 (starts_at/ends_at = 가는 편 출발/도착).
      오는 편은 summary에 언급하고 notes에 "오는 편(날짜)은 별도 일정으로 등록 필요"를 추가한다.
 2. notes 작성: 사용자가 알아둬야 할 사항을 한국어 문장 배열로 정리한다. 반드시 포함할 것:
@@ -185,8 +185,7 @@ _ORCH_SYSTEM = """너는 여행 문서 처리 에이전트의 orchestrator다.
    문서에서 확인되는 사실만 쓰고, 해당 없는 항목은 생략한다.
 3. 실행할 액션 목록 결정. 규칙:
    - add_to_itinerary는 항상 포함
-   - 시작 시각이 있으면 register_calendar 포함
-   - 취소기한이 남아 있으면 그 하루 전으로 set_reminder 포함 (args: remind_at, message)
+   - 시작 시각이 있으면 register_calendar 포함 (캘린더 등록 시 알림도 함께 설정됨)
    - total_price가 있으면 record_expense 포함 (args: amount, currency, category, memo)
 중요: 문서에 없는 정보(도시명, 날짜, 금액 등)를 절대 지어내지 마라. 알 수 없으면 빈 문자열로 둬라.
 반드시 주어진 JSON 스키마 형식으로만 답하라."""
@@ -315,11 +314,17 @@ async def act(state: DocState) -> dict:
     for action in state.get("planned_actions", []):
         res = dispatch(action.get("tool", ""), action.get("args", {}), dict(state))
         results.append(res)
-        if res.get("tool") == "add_to_itinerary" and res.get("item_id"):
-            item_id = res["item_id"]
-            get_db().table("documents").update({"item_id": item_id}).eq(
-                "id", state["document_id"]
-            ).execute()
+        if res.get("tool") == "add_to_itinerary":
+            if res.get("item_id"):
+                item_id = res["item_id"]
+                get_db().table("documents").update({"item_id": item_id}).eq(
+                    "id", state["document_id"]
+                ).execute()
+            elif res.get("status") in ("rejected", "error"):
+                # 일정이 저장되지 않았으면 캘린더 등록 등 이후 액션도 중단
+                results.append({"tool": "pipeline", "status": "halted",
+                                "detail": "일정이 저장되지 않아 이후 액션을 중단했습니다."})
+                break
         if res.get("tool") == "add_itinerary_bulk" and res.get("item_ids"):
             item_ids = res["item_ids"]
     return {"action_results": results, "item_id": item_id, "item_ids": item_ids}

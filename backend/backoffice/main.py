@@ -532,8 +532,8 @@ def db_items(trip_id: str | None = None):
         q = q.eq("trip_id", trip_id)
     rows = q.order("starts_at", desc=False).execute().data or []
     scope = f"trip <code>{html.escape(trip_id)}</code>의 일정" if trip_id else "전체 일정"
-    t = _table(rows, ["id", "type", "title", "starts_at", "ends_at",
-                      "price", "has_conflict", "conflict_msg", "booking_ref"])
+    t = _table(rows, ["id", "type", "title", "location", "starts_at", "ends_at",
+                      "price", "has_conflict", "conflict_msg", "booking_ref", "qr_code"])
     body = f"""<h1>Items</h1><p class="subtitle">{scope} · {len(rows)}개</p>{t}"""
     return _shell("Items", body, active="items")
 
@@ -542,10 +542,10 @@ def db_items(trip_id: str | None = None):
 def db_documents():
     rows = (
         get_db().table("documents")
-        .select("id,trip_id,item_id,file_name,mime_type,doc_type,created_at")
+        .select("id,item_id,file_name,mime_type,doc_type,created_at")
         .order("created_at", desc=True).execute().data or []
     )
-    t = _table(rows, ["id", "file_name", "doc_type", "trip_id", "item_id", "created_at"],
+    t = _table(rows, ["id", "file_name", "doc_type", "item_id", "created_at"],
                link={"column": "id", "href": "/db/documents/{id}"})
     body = f"""<h1>Documents</h1>
     <p class="subtitle">{len(rows)}개 · id를 클릭하면 파싱/추출 결과 상세를 볼 수 있습니다.</p>{t}"""
@@ -559,7 +559,7 @@ def db_document_detail(doc_id: str):
         return _shell("Document", '<div class="empty">문서를 찾을 수 없습니다</div>', active="documents")
     d = res.data[0]
     meta = {k: d.get(k) for k in ("id", "file_name", "mime_type", "doc_type",
-                                  "trip_id", "item_id", "storage_path", "created_at")}
+                                  "item_id", "storage_path", "created_at")}
     extracted = json.dumps(d.get("extracted"), ensure_ascii=False, indent=2)
     parsed_html = d.get("parsed_html") or "<p style='padding:1rem;color:#888'>파싱 결과 없음</p>"
     doc_type = d.get("doc_type") or "—"
