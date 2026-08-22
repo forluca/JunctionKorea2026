@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="css/selectTravel.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     
+    
     <script>
         tailwind.config = {
             theme: { extend: { fontFamily: { sans: ['Pretendard', 'sans-serif'] } } }
@@ -21,12 +22,16 @@
     <nav class="w-[64px] h-full bg-[#1e3a8a] flex flex-col items-center py-6 border-r border-blue-900 shadow-lg z-30 flex-shrink-0">
         <a href="#" class="app-logo w-10 h-10 bg-white text-[#1e3a8a] text-xl font-black flex items-center justify-center rounded-xl shadow-sm mb-10 text-center" aria-label="Docket 홈"><span class="logo-fallback">D.</span><img src="assets/logo.png" alt="Docket" onerror="this.hidden=true"></a>
         <div class="flex flex-col w-full gap-2">
-            <button class="w-full py-4 flex flex-col items-center gap-1.5 bg-blue-800 text-white border-l-4 border-white transition">
+            <!-- 식별자(id) 추가 및 기본 활성화 상태 유지 -->
+            <button id="lnb-trip-button" class="w-full py-4 flex flex-col items-center gap-1.5 bg-blue-800 text-white border-l-4 border-white transition">
                 <i class="fa-solid fa-plane-departure text-xl"></i><span class="text-[11px] font-medium tracking-wide">나의 여행</span>
             </button>
             <a href="wallet.html" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition">
                 <i class="fa-solid fa-wallet text-xl"></i><span class="text-[11px] font-medium tracking-wide">통합 지갑</span>
             </a>
+            <button id="lnb-docs-button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition">
+                <i class="fa-solid fa-folder-open text-xl"></i><span class="text-[11px] font-medium tracking-wide">문서 보관함</span>
+            </button>
         </div>
         <div class="mt-auto flex w-full flex-col gap-2">
             <button id="user-info-button" type="button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="사용자 정보">
@@ -40,9 +45,14 @@
 
     <!-- 패널 1: 여행 목록 -->
     <aside id="list-panel" class="h-full bg-white border-r border-gray-200 flex-col z-20 flex-shrink-0 relative">
-        <header class="h-[76px] px-5 border-b border-gray-100 flex items-center justify-between gap-3 bg-white flex-shrink-0">
-            <h1 class="text-xl font-bold text-gray-900">여행 정보</h1>
+        <!-- 문서 보관함 형식으로 통일된 헤더 -->
+        <header class="h-[76px] px-8 border-b border-gray-200 bg-white flex items-center justify-between flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-plane-departure text-blue-600 text-xl"></i>
+                <h2 class="text-xl font-bold text-gray-900">나의 여행</h2>
+            </div>
         </header>
+        
         <div id="trip-list-container" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-50/50 pb-28"></div>
         <div class="absolute bottom-0 left-0 w-full p-4 bg-white border-t border-gray-100">
             <button id="add-trip-button" class="w-full bg-[#1e3a8a] hover:bg-[#172554] text-white font-medium py-3 rounded-xl transition-all flex justify-center items-center gap-2">
@@ -84,6 +94,25 @@
         <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-gray-50/30 w-[450px]" id="item-content"></div>
     </section>
 
+    <!-- 패널 5: 문서 보관함 (Google Drive Style) -->
+    <section id="docs-panel" class="h-full w-full bg-[#f8fafc] flex-col z-30 relative overflow-hidden flex-1">
+        <header class="h-[76px] px-8 border-b border-gray-200 bg-white flex items-center justify-between flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-folder-open text-blue-600 text-xl"></i>
+                <h2 class="text-xl font-bold text-gray-900">문서 보관함</h2>
+            </div>
+            <div class="relative w-[300px]">
+                <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                <input type="text" id="docs-search-input" placeholder="문서명, 여행, 일정 검색..." class="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition outline-none">
+            </div>
+        </header>
+        <div class="flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <div id="docs-grid-container" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                <!-- 문서 카드가 자바스크립트에 의해 여기에 렌더링됩니다 -->
+            </div>
+        </div>
+    </section>
+
     <!-- 패널 4: 파일 업로드 -->
     <aside id="upload-panel" class="h-full bg-white border-r border-gray-200 flex-col z-20 flex-shrink-0 relative shadow-xl">
         <header class="h-[76px] px-5 border-b border-gray-200 bg-white flex items-center gap-3 flex-shrink-0">
@@ -93,14 +122,12 @@
             <h2 id="upload-panel-title" class="text-xl font-bold text-gray-900">새 여행 문서 업로드</h2>
         </header>
         <div class="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-gray-50/50">
-            <div class="bg-white border border-gray-200 rounded-xl p-4">
-                <label id="trip-text-label" for="trip-text-input" class="block text-sm font-bold text-gray-700 mb-2">여행 일정 내용</label>
-                <textarea id="trip-text-input" rows="4" class="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="여행 이름, 일정, 예약 정보를 직접 입력하세요."></textarea>
-            </div>
+            <!-- 텍스트 입력 카드 영역 완전 삭제 완료 -->
+            
             <ul class="text-xs text-gray-500 list-disc pl-4 mb-4">
-                    <li>Drag and Drop 지원</li>
-                    <li>PDF, PNG, JPG 다중 선택 지원</li>
-                </ul>
+                <li>Drag and Drop 지원</li>
+                <li>PDF, PNG, JPG 다중 선택 지원</li>
+            </ul>
             <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition bg-white">
                 <i class="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-3"></i>
                 <p class="text-sm font-bold text-gray-700">마우스로 파일을 끌어오세요</p>
@@ -123,7 +150,7 @@
             <button id="btn-parse" class="w-2/3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-3 rounded-xl transition opacity-50 cursor-not-allowed" disabled>문서 분석 시작</button>
         </div>
     </aside>
-
+    
     <main id="map-area" class="map-area bg-[#e2e8f0] overflow-hidden z-0">
         <div id="map" class="absolute inset-0"></div>
         <div id="map-fallback" class="absolute inset-0 flex items-center justify-center bg-slate-200/80 p-6 text-center">

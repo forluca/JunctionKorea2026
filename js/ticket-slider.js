@@ -15,8 +15,8 @@ const TicketSlider = {
             void ticketView.offsetWidth;
             ticketView.classList.add(slideClass);
             window.setTimeout(() => {
-                // 속성명을 복수로 참조하여 누락을 방지함
-                passElement.querySelector('.wallet-ticket-code').textContent = ticket.code || ticket.qrCodeStr || '';
+                // 스네이크 케이스 준수 맵핑 적용
+                passElement.querySelector('.wallet-ticket-code').textContent = ticket.qr_code || '';
                 passElement.querySelector('.wallet-ticket-label').textContent = ticket.label || `티켓 ${ticketIndex + 1}`;
             }, 160);
             window.setTimeout(() => ticketView.classList.remove(slideClass), 360);

@@ -361,3 +361,8 @@
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+/* 화면 상태에 따른 패널 표시 제어 */
+.state-docs #list-panel, .state-docs #trip-panel, .state-docs #item-panel, .state-docs #upload-panel, .state-docs #map-area { display: none !important; }
+#docs-panel { display: none; }
+.state-docs #docs-panel { display: flex; }

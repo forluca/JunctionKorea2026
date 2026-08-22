@@ -1,5 +1,4 @@
 // Google Cloud Console에서 발급한 Maps JavaScript API 키를 입력합니다.
-// 키가 비어 있으면 안내 화면을 유지해 로컬 파일에서도 페이지가 깨지지 않습니다.
 const GOOGLE_MAPS_API_KEY = window.GOOGLE_MAPS_API_KEY || '';
 const DARK_MAP_STYLES = [
     { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
@@ -13,26 +12,26 @@ const DARK_MAP_STYLES = [
 
 const MapController = {
     map: null,
+    markers: [], // 마커 객체 배열
+    polylines: [], // 교통편 폴리라인 배열
+    geocoder: null,
 
     getMapStyles: (theme = document.documentElement.dataset.theme) => theme === 'dark' ? DARK_MAP_STYLES : [],
 
-    // 지도 로딩 실패 원인을 지도 영역 안에 표시합니다.
     showFallback: (message) => {
         document.getElementById('map').classList.add('hidden');
         document.getElementById('map-fallback').classList.remove('hidden');
         document.getElementById('map-status').innerText = message;
     },
 
-    // Google Maps API를 동적으로 불러와 지도 영역을 초기화합니다.
     init: () => {
         if (!GOOGLE_MAPS_API_KEY) {
             MapController.showFallback('Google Maps API 키를 js/app.js에 설정하세요.');
             return;
         }
 
-        // Google이 인증 실패 시 호출하는 전역 콜백입니다.
         window.gm_authFailure = () => {
-            MapController.showFallback('Google Maps 인증에 실패했습니다. API 키, 결제 계정, 도메인 제한을 확인하세요.');
+            MapController.showFallback('Google Maps 인증에 실패했습니다.');
         };
 
         window.initGoogleMap = () => {
@@ -45,12 +44,8 @@ const MapController = {
                 fullscreenControl: false
             });
             MapController.map = map;
+            MapController.geocoder = new google.maps.Geocoder();
 
-            new google.maps.Marker({
-                map,
-                position: { lat: 48.8566, lng: 2.3522 },
-                title: '파리 여행지'
-            });
             window.addEventListener('resize', () => {
                 google.maps.event.trigger(map, 'resize');
             });
@@ -58,54 +53,210 @@ const MapController = {
             document.getElementById('map-fallback').classList.add('hidden');
         };
 
-        window.addEventListener('docket-theme-change', event => {
-            if (MapController.map) MapController.map.setOptions({ styles: MapController.getMapStyles(event.detail) });
-        });
-
         const script = document.createElement('script');
         script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&callback=initGoogleMap`;
         script.async = true;
         script.defer = true;
-        script.onerror = () => {
-            MapController.showFallback('Google Maps를 불러오지 못했습니다. API 키와 Maps JavaScript API 사용 설정을 확인하세요.');
-        };
         document.head.appendChild(script);
+    },
+
+    // 타임라인 닫을 때 호출될 마커 및 폴리라인 완전 삭제 메서드
+    clearMarkers: () => {
+        MapController.markers.forEach(obj => {
+            if (obj.marker) obj.marker.setMap(null);
+        });
+        MapController.markers = [];
+
+        MapController.polylines.forEach(line => {
+            if (line) line.setMap(null);
+        });
+        MapController.polylines = [];
+    },
+
+    renderMarkersForTrip: async (items) => {
+        if (!MapController.map || !MapController.geocoder) return;
+        MapController.clearMarkers();
+
+        const bounds = new google.maps.LatLngBounds();
+        let validLocationCount = 0;
+                    
+
+        for (const item of items) {
+            console.log(`Rendering marker for item: ${item.title}, Location: ${item.location}`);
+            const rawType = (item.type || '').toLowerCase();
+            const locationText = item.location;
+            if (!locationText || locationText === '...') continue;
+            await new Promise((resolve) => {
+                MapController.geocoder.geocode({ address: locationText }, async (results, status) => {
+                    if (status === 'OK' && results[0]) {
+                        const position = results[0].geometry.location;
+                        
+                        // 호텔일 경우 특수 아이콘 지정 (Google 기본 숙박/호텔 아이콘 또는 마커 색상 변경)
+                        let iconConfig = undefined;
+                        if (rawType === 'hotel') {
+                            iconConfig = {
+                                url: 'https://maps.google.com/mapfiles/ms/icons/lodging.png', // Google Maps 공식 제공 호텔/숙박 시설 마커 아이콘
+                                scaledSize: new google.maps.Size(32, 32) // 아이콘 크기 조절
+                            };
+                        } else if (rawType === 'transportation') {
+                            iconConfig = {
+                                url: 'https://maps.google.com/mapfiles/ms/icons/bus.png',
+                                scaledSize: new google.maps.Size(32, 32)
+                            };
+                        }
+
+                        const marker = new google.maps.Marker({
+                            map: MapController.map,
+                            position: position,
+                            title: item.title,
+                            icon: iconConfig // 설정된 아이콘 객체 적용
+                        });
+
+                        const uniqueNodeId = rawType === 'hotel' ? `${item.id}-in` : `${item.id}-in`;
+                        marker.addListener('click', () => {
+                            MapController.map.panTo(position);
+                            setTimeout(() => MapController.map.setZoom(12), 50);
+                            if (typeof UIRenderer !== 'undefined' && UIRenderer.openItem) {
+                                UIRenderer.openItem(item.id, uniqueNodeId);
+                            }
+                        });
+
+                        MapController.markers.push({ itemId: item.id, marker: marker });
+                        bounds.extend(position);
+                        validLocationCount++;
+
+                        // 교통편 경로 선(Polyline) 처리 유지
+                        if (rawType === 'transportation' && item.title.includes('->')) {
+                            const parts = item.title.split('->');
+                            const arrivalDest = parts[1] ? parts[1].trim() : null;
+                            if (arrivalDest) {
+                                MapController.geocoder.geocode({ address: arrivalDest }, (arrResults, arrStatus) => {
+                                    if (arrStatus === 'OK' && arrResults[0]) {
+                                        const arrPosition = arrResults[0].geometry.location;
+                                        const arrMarker = new google.maps.Marker({
+                                            map: MapController.map,
+                                            position: arrPosition,
+                                            title: `${item.title} (도착)`
+                                        });
+                                        MapController.markers.push({ itemId: item.id, marker: arrMarker });
+                                        bounds.extend(arrPosition);
+
+                                        const flightPath = new google.maps.Polyline({
+                                            path: [position, arrPosition],
+                                            geodesic: true,
+                                            strokeColor: '#3b82f6',
+                                            strokeOpacity: 0.8,
+                                            strokeWeight: 3
+                                        });
+                                        flightPath.setMap(MapController.map);
+                                        MapController.polylines.push(flightPath);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    resolve();
+                });
+            });
+        }
+
+        if (validLocationCount > 0) {
+            MapController.map.fitBounds(bounds, { top: 100, right: 100, bottom: 100, left: 100 });
+            google.maps.event.addListenerOnce(MapController.map, 'bounds_changed', () => {
+                if (MapController.map.getZoom() > 13) MapController.map.setZoom(13);
+            });
+        }
+    },
+
+    focusMarker: (itemId) => {
+        if (!MapController.map) return;
+        const targetMarkerObj = MapController.markers.find(m => m.itemId === itemId);
+        if (targetMarkerObj && targetMarkerObj.marker) {
+            const position = targetMarkerObj.marker.getPosition();
+            if (position) {
+                MapController.map.panTo(position);
+                setTimeout(() => MapController.map.setZoom(13), 50);
+            }
+        }
     }
 };
 
 const UIRenderer = {
     selectedItemId: null,
+    docsData: [], 
 
-    // 금액을 한국 원화 형식으로 변환합니다.
-    formatCurrency: (amount) => {
-        if (!amount) return '';
-        return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(amount);
+    formatCurrency: (amount, currency = 'KRW') => {
+        if (amount === null || amount === undefined || isNaN(amount)) return '';
+        
+        let curr = (currency || 'KRW').toUpperCase();
+        
+        // 통화별 로케일 및 화폐 표기 설정
+        let locale = 'ko-KR';
+        if (curr === 'USD') locale = 'en-US';
+        else if (curr === 'EUR') locale = 'de-DE';
+
+        try {
+            return new Intl.NumberFormat(locale, { 
+                style: 'currency', 
+                currency: curr 
+            }).format(amount);
+        } catch (e) {
+            // 지원하지 않는 통화 코드일 경우 기본 원화 또는 원본 숫자 포맷 반환
+            return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(amount);
+        }
     },
 
-    // 현재 화면 상태를 나타내는 클래스로 패널 구성을 전환합니다.
-    setAppClass: (stateClass) => {
-        document.getElementById('app-container').className = `h-screen w-screen overflow-hidden flex bg-[#f3f4f6] text-[#1e293b] antialiased ${stateClass}`;
+    formatDateTime: (timeStr) => {
+        if (!timeStr) return '';
+        const dateTimeMatch = timeStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T|\s)(\d{2}):(\d{2})/);
+        if (dateTimeMatch) {
+            return `${dateTimeMatch[1]}.${dateTimeMatch[2]}.${dateTimeMatch[3]} ${dateTimeMatch[4]}:${dateTimeMatch[5]}`;
+        }
+        const dateMatch = timeStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (dateMatch) {
+            return `${dateMatch[1]}.${dateMatch[2]}.${dateMatch[3]}`;
+        }
+        return String(timeStr);
     },
 
-    // 여행 목록을 불러오는 동안 카드 형태의 정적 스켈레톤을 표시합니다.
-    renderTripListSkeleton: (container) => {
-        container.innerHTML = `
-            <div class="list-skeleton-card"><div class="list-skeleton-title"></div><div class="list-skeleton-line"></div></div>
-            <div class="list-skeleton-card"><div class="list-skeleton-title"></div><div class="list-skeleton-line"></div></div>
-        `;
+    formatDateOnly: (timeStr) => {
+        if (!timeStr) return '';
+        const dateMatch = timeStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (dateMatch) {
+            return `${dateMatch[1]}.${dateMatch[2]}.${dateMatch[3]}`;
+        }
+        return String(timeStr);
     },
 
-    // 일정 목록을 불러오는 동안 타임라인 형태의 정적 스켈레톤을 표시합니다.
-    renderTimelineSkeleton: (container) => {
-        container.innerHTML = `
-            <div class="timeline-skeleton-line"></div>
-            <div class="timeline-skeleton-item"><div class="timeline-skeleton-dot"></div><div class="timeline-skeleton-card"><div class="timeline-skeleton-title"></div><div class="timeline-skeleton-text"></div></div></div>
-            <div class="timeline-skeleton-item"><div class="timeline-skeleton-dot"></div><div class="timeline-skeleton-card"><div class="timeline-skeleton-title"></div><div class="timeline-skeleton-text"></div></div></div>
-            <div class="timeline-skeleton-item"><div class="timeline-skeleton-dot"></div><div class="timeline-skeleton-card"><div class="timeline-skeleton-title"></div><div class="timeline-skeleton-text"></div></div></div>
-        `;
+    setAppClass: (stateClass) => { 
+        document.getElementById('app-container').className = `h-screen w-screen overflow-hidden flex bg-[#f3f4f6] text-[#1e293b] antialiased ${stateClass}`; 
     },
 
-    // API에서 여행 목록을 받아 카드 형태로 렌더링합니다.
+    // 오류 수정: UIRenderer 내부로 LNB 제어 로직 통합
+    setLNBActive: (activeMenu) => {
+        const tripBtn = document.getElementById('lnb-trip-button');
+        const docsBtn = document.getElementById('lnb-docs-button');
+
+        const baseClasses = 'w-full py-4 flex flex-col items-center gap-1.5 transition border-l-4';
+        const inactiveClasses = `${baseClasses} text-blue-200 hover:text-white hover:bg-blue-800/50 border-transparent cursor-pointer`;
+        const activeClasses = `${baseClasses} bg-blue-800 text-white border-white cursor-default`;
+
+        if (tripBtn) {
+            tripBtn.setAttribute('class', activeMenu === 'trip' ? activeClasses : inactiveClasses);
+        }
+        if (docsBtn) {
+            docsBtn.setAttribute('class', activeMenu === 'docs' ? activeClasses : inactiveClasses);
+        }
+    },
+
+    renderTripListSkeleton: (container) => { 
+        container.innerHTML = `<div class="list-skeleton-card"><div class="list-skeleton-title"></div><div class="list-skeleton-line"></div></div><div class="list-skeleton-card"><div class="list-skeleton-title"></div><div class="list-skeleton-line"></div></div>`; 
+    },
+    
+    renderTimelineSkeleton: (container) => { 
+        container.innerHTML = `<div class="timeline-skeleton-line"></div><div class="timeline-skeleton-item"><div class="timeline-skeleton-dot"></div><div class="timeline-skeleton-card"><div class="timeline-skeleton-title"></div><div class="timeline-skeleton-text"></div></div></div>`; 
+    },
+
     renderTripList: async () => {
         const container = document.getElementById('trip-list-container');
         UIRenderer.renderTripListSkeleton(container);
@@ -119,9 +270,13 @@ const UIRenderer = {
             const titleColor = trip.status === 'active' ? 'text-black' : 'text-gray-500';
             const tripCard = document.createElement('div');
             tripCard.className = `bg-white border-2 ${cardStyle} rounded-xl p-4 shadow-sm cursor-pointer hover:-translate-y-1 transition group`;
+            
+            const displayStart = UIRenderer.formatDateOnly(trip.start_date);
+            const displayEnd = UIRenderer.formatDateOnly(trip.end_date);
+
             tripCard.innerHTML = `
                 <h3 class="text-lg font-bold ${titleColor} mb-1">${trip.title}</h3>
-                <p class="text-xs text-gray-500"><i class="fa-regular fa-calendar mr-1"></i> ${trip.startDate} - ${trip.endDate}</p>
+                <p class="text-xs text-gray-500"><i class="fa-regular fa-calendar mr-1"></i> ${displayStart} - ${displayEnd}</p>
                 ${conflictBadge}
             `;
             tripCard.addEventListener('click', () => UIRenderer.openTimeline(trip.id, trip.title));
@@ -129,39 +284,82 @@ const UIRenderer = {
         });
     },
 
-    // 선택한 여행의 일정을 타임라인으로 표시합니다.
     openTimeline: async (tripId, tripTitle) => {
         UIRenderer.setAppClass('state-trip');
         document.getElementById('timeline-header-info').innerHTML = `<h2 class="text-lg font-bold text-gray-900 truncate-text">${tripTitle}</h2><p class="text-xs text-gray-500">상세 타임라인</p>`;
         const container = document.getElementById('timeline-container');
         UIRenderer.renderTimelineSkeleton(container);
 
-        const items = await DocketAPI.fetchTripDetails(tripId);
-        container.innerHTML = '<div class="absolute left-[28px] top-6 bottom-6 w-[2px] bg-gray-200 z-0"></div>';
-        items.forEach(item => {
-            const dotClass = item.hasConflict ? 'bg-red-500 animate-pulse' : 'bg-blue-500';
-            const borderClass = item.hasConflict ? 'border-red-300 group-hover:border-red-500' : 'border-gray-200 group-hover:border-blue-400';
-            const textClass = item.hasConflict ? 'text-red-600' : 'text-blue-600';
-            const conflictDiv = item.hasConflict ? `<div class="mt-2 text-[10px] text-red-600 bg-red-50 p-1.5 rounded truncate-text"><i class="fa-solid fa-triangle-exclamation"></i> ${item.conflictMsg}</div>` : '';
+        const rawItems = await DocketAPI.fetchTripDetails(tripId);
+        // ★ 핵심 추가: 타임라인 데이터가 로드된 직후 지도에 마커(핀)를 그리는 함수 호출
+        if (typeof MapController !== 'undefined' && MapController.renderMarkersForTrip) {
+            await MapController.renderMarkersForTrip(rawItems);
+        }
+
+        const timelineItems = [];
+
+        rawItems.forEach(item => {
+            const rawType = item.type || '';
+            const startTimeFormatted = UIRenderer.formatDateTime(item.starts_at);
+            const endTimeFormatted = UIRenderer.formatDateTime(item.ends_at);
+
+            if (rawType.toLowerCase() === 'hotel') {
+                timelineItems.push({
+                    ...item, sortTime: item.starts_at, displayTime: startTimeFormatted || '체크인 시간 미상', displayTitle: item.title, displayDesc: '체크인', isCheckoutNode: false
+                });
+                if (item.ends_at) {
+                    timelineItems.push({
+                        ...item, sortTime: item.ends_at, displayTime: endTimeFormatted, displayTitle: item.title, displayDesc: '체크아웃', isCheckoutNode: true, has_conflict: false
+                    });
+                }
+            } else {
+                timelineItems.push({
+                    ...item, sortTime: item.starts_at, displayTime: startTimeFormatted, displayTitle: item.title, displayDesc: item.location || '', isCheckoutNode: false
+                });
+            }
+        });
+
+        timelineItems.sort((a, b) => {
+            if (!a.sortTime) return 1;
+            if (!b.sortTime) return -1;
+            const timeA = new Date(a.sortTime).getTime();
+            const timeB = new Date(b.sortTime).getTime();
+            if (!isNaN(timeA) && !isNaN(timeB)) return timeA - timeB;
+            return String(a.sortTime).localeCompare(String(b.sortTime));
+        });
+
+        // 타임라인 컨테이너의 배경 세로선이 전체 높이를 커버할 수 있도록 relative 및 선 스타일 보강
+        container.innerHTML = '<div class="absolute left-[28px] top-6 bottom-6 w-[2px] bg-gray-200 z-0 h-full"></div>';
+        
+        timelineItems.forEach(item => {
+            const dotClass = item.has_conflict ? 'bg-red-500 animate-pulse' : 'bg-blue-500';
+            const borderClass = item.has_conflict ? 'border-red-300 group-hover:border-red-500' : 'border-gray-200 group-hover:border-blue-400';
+            const textClass = item.has_conflict ? 'text-red-600' : 'text-blue-600';
+            const conflictDiv = item.has_conflict ? `<div class="mt-2 text-[10px] text-red-600 bg-red-50 p-1.5 rounded truncate-text"><i class="fa-solid fa-triangle-exclamation"></i> ${item.conflict_msg}</div>` : '';
+            
             const timelineItem = document.createElement('div');
-            timelineItem.className = 'relative flex items-start gap-3 cursor-pointer group z-10';
+            // 각 아이템마다 원(Dot)과 카드 영역이 플렉스 구조로 반복 생성되도록 설정
+            timelineItem.className = 'relative flex items-start gap-3 cursor-pointer group z-10 mb-6';
+            const uniqueNodeId = item.isCheckoutNode ? `${item.id}-out` : `${item.id}-in`;
+            timelineItem.dataset.nodeId = uniqueNodeId;
             timelineItem.dataset.itemId = item.id;
-            if (UIRenderer.selectedItemId === item.id) timelineItem.classList.add('timeline-item-selected');
+            
+            if (UIRenderer.selectedItemId === uniqueNodeId) timelineItem.classList.add('timeline-item-selected');
+
             timelineItem.innerHTML = `
-                <div class="w-4 h-4 ${dotClass} rounded-full border-4 border-gray-50 z-10"></div>
+                <div class="w-4 h-4 ${dotClass} rounded-full border-4 border-gray-50 z-10 flex-shrink-0 mt-1"></div>
                 <div class="flex-1 min-w-0 bg-white border ${borderClass} p-3 rounded-xl shadow-sm transition">
-                    <span class="${textClass} text-xs" style="font-weight: 700;">${item.time}</span>
-                    <h4 class="text-sm font-bold text-gray-900 mt-1 timeline-title">${item.title}</h4>
-                    <p class="text-[11px] text-gray-500 mt-0.5 timeline-desc">${item.desc}</p>
+                    <span class="${textClass} text-xs" style="font-weight: 700;">${item.displayTime}</span>
+                    <h4 class="text-sm font-bold text-gray-900 mt-1 timeline-title">${item.displayTitle}</h4>
+                    <p class="text-[11px] text-gray-500 mt-0.5 timeline-desc">${item.displayDesc}</p>
                     ${conflictDiv}
                 </div>
             `;
-            timelineItem.addEventListener('click', () => UIRenderer.openItem(item.id));
+            timelineItem.addEventListener('click', () => UIRenderer.openItem(item.id, uniqueNodeId));
             container.appendChild(timelineItem);
         });
     },
 
-    // 상세 화면에서는 상세 패널만 닫고 일정 목록으로 돌아갑니다.
     closeTimeline: () => {
         const appContainer = document.getElementById('app-container');
         if (appContainer.classList.contains('state-item')) {
@@ -170,20 +368,21 @@ const UIRenderer = {
             UIRenderer.setAppClass('state-trip');
             return;
         }
-
+        MapController.clearMarkers();
         UIRenderer.setAppClass('state-list');
     },
 
-    // 선택한 일정의 상세 정보를 표시합니다.
-    openItem: async (itemId) => {
-        if (UIRenderer.selectedItemId === itemId && document.getElementById('app-container').classList.contains('state-item')) {
+    openItem: async (itemId, nodeId = null) => {
+        const targetNodeId = nodeId || `${itemId}-in`;
+        if (UIRenderer.selectedItemId === targetNodeId && document.getElementById('app-container').classList.contains('state-item')) {
             UIRenderer.closeItem();
             return;
         }
 
-        UIRenderer.selectedItemId = itemId;
+        UIRenderer.selectedItemId = targetNodeId;
         document.querySelectorAll('.timeline-item-selected').forEach(item => item.classList.remove('timeline-item-selected'));
-        document.querySelector(`[data-item-id="${itemId}"]`)?.classList.add('timeline-item-selected');
+        document.querySelector(`[data-node-id="${targetNodeId}"]`)?.classList.add('timeline-item-selected');
+        
         const itemPanel = document.getElementById('item-panel');
         const content = document.getElementById('item-content');
         itemPanel.classList.add('is-loading');
@@ -196,18 +395,34 @@ const UIRenderer = {
             return;
         }
 
-        // DB 스키마 기반 데이터 예외 처리 (Nullish Coalescing 및 논리합 활용)
-        const displayType = data.type || '미지정';
-        const displayTime = data.timeStr || data.starts_at || '일시 정보 없음';
+        const rawType = data.type || '';
+        const displayType = rawType ? rawType.toUpperCase() : '미지정';
+        
+        const startTimeFormatted = UIRenderer.formatDateTime(data.starts_at) || '일시 정보 없음';
+        const endTimeFormatted = UIRenderer.formatDateTime(data.ends_at);
+
+        let displayTime = startTimeFormatted;
+        if (endTimeFormatted && startTimeFormatted !== '일시 정보 없음') {
+            displayTime += ` ~ ${endTimeFormatted}`;
+        }
+        
         const displayLocation = data.location || '...';
         const displayBookingRef = data.booking_ref || '...';
-        const displayPrice = data.price ? UIRenderer.formatCurrency(data.price) : '...';
-        const displayCancelDead = data.cancellation_deadline || null;
+        // openItem 내부의 가격 포맷 호출부 변경
+        const displayPrice = data.price ? UIRenderer.formatCurrency(data.price, data.currency) : '...';
+        const displayCancelDead = UIRenderer.formatDateTime(data.cancellation_deadline) || null;
+        const conflictMessage = data.conflict_msg || '상세 내용 없음';
+
+        let displayNotes = [];
+        if (Array.isArray(data.notes) && data.notes.length > 0) {
+            displayNotes = data.notes;
+        } else if (typeof data.notes === 'string' && data.notes.trim() !== '') {
+            displayNotes = [data.notes];
+        }
 
         document.getElementById('item-header').innerHTML = `
             <div>
-                ${data.hasConflict ? '<span class="bg-red-100 text-red-700 text-[10px] px-2 py-1 rounded mb-2 inline-block" style="font-weight: 700;">Action Required</span>' : ''}
-                <div class="text-xs text-blue-600 mb-1" style="font-weight: 700;">${displayType.toUpperCase()}</div>
+                <div class="text-xs text-blue-600 mb-1" style="font-weight: 700;">${displayType}</div>
                 <h2 class="text-xl font-bold text-gray-900">${data.title}</h2>
                 <p class="text-xs text-gray-500 mt-1">${displayTime}</p>
             </div>
@@ -217,17 +432,17 @@ const UIRenderer = {
 
         let validTickets = [];
         if (Array.isArray(data.tickets) && data.tickets.length > 0) {
-            validTickets = data.tickets.filter(ticket => ticket.qrCodeStr || ticket.code);
-        } else if (data.qrCodeStr) {
-            validTickets = [{ id: `${data.id}-ticket`, qrCodeStr: data.qrCodeStr, label: '티켓 1' }];
+            validTickets = data.tickets.filter(ticket => ticket.qr_code);
+        } else if (data.qr_code) {
+            validTickets = [{ id: `${data.id}-ticket`, qr_code: data.qr_code, label: '티켓 1' }];
         }
 
         let html = '';
-        if (data.hasConflict) {
-            html += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl mb-4"><h4 class="text-sm text-red-800 mb-2" style="font-weight: 700;"><i class="fa-solid fa-triangle-exclamation"></i> 일정 충돌 발생</h4><p class="text-xs text-red-600 leading-relaxed">${data.conflictDetail || data.conflict_msg || '상세 내용 없음'}</p></div>`;
+        
+        if (data.has_conflict) {
+            html += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl mb-4"><h4 class="text-sm text-red-800 mb-2" style="font-weight: 700;"><i class="fa-solid fa-triangle-exclamation"></i> 일정 충돌 발생</h4><p class="text-xs text-red-600 leading-relaxed">${conflictMessage}</p></div>`;
         }
 
-        // 스키마에 존재하는 메타 정보(위치, 예약번호, 취소 기한)를 나열하는 신규 영역
         html += `
             <div class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm mb-4">
                 <dl class="space-y-3">
@@ -249,6 +464,17 @@ const UIRenderer = {
             </div>
         `;
 
+        if (displayNotes.length > 0) {
+            html += `
+                <div class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm mb-4">
+                    <h4 class="text-xs font-bold text-gray-900 mb-2">참고 사항</h4>
+                    <ul class="text-xs text-gray-600 space-y-1.5 list-disc pl-4 marker:text-gray-300">
+                        ${displayNotes.map(note => `<li>${note}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
         html += `<div class="bg-white border border-gray-200 p-5 rounded-xl text-center shadow-sm">`;
 
         if (validTickets.length > 0) {
@@ -256,7 +482,7 @@ const UIRenderer = {
                 <p class="text-xs text-gray-500 mb-3">입장용 QR 코드 (현장 제시)</p>
                 <div class="detail-ticket-slider" data-pass-id="${data.id}" data-ticket-index="0">
                     <button class="wallet-ticket-arrow wallet-ticket-prev" type="button" aria-label="이전 티켓"><i class="fa-solid fa-chevron-left"></i></button>
-                    <div class="wallet-ticket-view"><div class="wallet-qr"><i class="fa-solid fa-qrcode"></i></div><strong class="wallet-ticket-code">${validTickets[0].qrCodeStr || validTickets[0].code || ''}</strong><small class="wallet-ticket-label">${validTickets[0].label || '티켓 1'}</small></div>
+                    <div class="wallet-ticket-view"><div class="wallet-qr"><i class="fa-solid fa-qrcode"></i></div><strong class="wallet-ticket-code">${validTickets[0].qr_code}</strong><small class="wallet-ticket-label">${validTickets[0].label || '티켓 1'}</small></div>
                     <button class="wallet-ticket-arrow wallet-ticket-next" type="button" aria-label="다음 티켓"><i class="fa-solid fa-chevron-right"></i></button>
                     <div class="wallet-ticket-dots">${validTickets.map((ticket, index) => `<button type="button" class="wallet-ticket-dot${index === 0 ? ' is-active' : ''}" data-ticket-index="${index}" aria-label="${ticket.label || `티켓 ${index + 1}`} "></button>`).join('')}</div>
                 </div>
@@ -266,7 +492,9 @@ const UIRenderer = {
         html += `
                 <div class="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
                     <span class="text-xs text-gray-600">결제 금액: ${displayPrice}</span>
-                    <button class="text-blue-600 text-xs hover:underline" style="font-weight: 700;">원본 문서 보기</button>
+                    <button id="view-document-button" class="text-blue-600 text-xs hover:underline" style="font-weight: 700;" ${data.document_id ? '' : 'disabled'}>
+                        원본 문서 보기
+                    </button>
                 </div>
             </div>
         `;
@@ -277,17 +505,114 @@ const UIRenderer = {
             if (ticketSlider) TicketSlider.bind(ticketSlider, { tickets: validTickets });
         }
         
+        const viewDocButton = document.getElementById('view-document-button');
+        if (viewDocButton && data.document_id) {
+            viewDocButton.addEventListener('click', async (event) => {
+                event.preventDefault();
+                const originalText = viewDocButton.innerText;
+                viewDocButton.innerText = '문서 불러오는 중...';
+                viewDocButton.classList.add('opacity-50', 'pointer-events-none');
+                
+                try {
+                    const docDetail = await DocketAPI.fetchDocumentDetail(data.document_id);
+                    if (docDetail && docDetail.original_url) {
+                        window.open(docDetail.original_url, '_blank');
+                    } else {
+                        alert('원본 문서 링크를 찾을 수 없습니다.');
+                    }
+                } catch (error) {
+                    alert('문서 정보를 불러오는 데 실패했습니다.');
+                } finally {
+                    viewDocButton.innerText = originalText;
+                    viewDocButton.classList.remove('opacity-50', 'pointer-events-none');
+                }
+            });
+        }
+        if (typeof MapController !== 'undefined' && MapController.focusMarker) {
+            MapController.focusMarker(itemId);
+        }
+        
         UIRenderer.setAppClass('state-item');
         window.setTimeout(() => itemPanel.classList.remove('is-loading'), 300);
     },
 
-    // 상세 패널을 닫고 타임라인으로 돌아갑니다.
     closeItem: (event) => {
         if (event) event.stopPropagation();
         UIRenderer.selectedItemId = null;
         document.querySelectorAll('.timeline-item-selected').forEach(item => item.classList.remove('timeline-item-selected'));
         document.getElementById('item-panel').classList.add('is-loading');
+        
         UIRenderer.setAppClass('state-trip');
+    },
+
+    openDocs: async () => {
+        UIRenderer.setAppClass('state-docs');
+        UIRenderer.setLNBActive('docs');
+        
+        const container = document.getElementById('docs-grid-container');
+        container.innerHTML = '<div class="col-span-full text-center py-10 text-gray-400"><i class="fa-solid fa-circle-notch fa-spin text-2xl mb-2"></i><p>문서를 불러오는 중입니다...</p></div>';
+        
+        UIRenderer.docsData = await DocketAPI.fetchAllDocuments();
+        UIRenderer.renderDocsList(UIRenderer.docsData);
+    },
+
+    renderDocsList: (docs) => {
+        const container = document.getElementById('docs-grid-container');
+        container.innerHTML = '';
+
+        if (docs.length === 0) {
+            container.innerHTML = '<div class="col-span-full text-center py-20 text-gray-400"><i class="fa-regular fa-folder-open text-4xl mb-3"></i><p>보관된 문서가 없습니다.</p></div>';
+            return;
+        }
+
+        docs.forEach(doc => {
+            const iconMap = { hotel: 'fa-bed', flight: 'fa-plane', museum: 'fa-building-columns', other: 'fa-file-lines' };
+            const icon = iconMap[doc.doc_type] || 'fa-file-pdf';
+            const dateStr = doc.created_at ? UIRenderer.formatDateOnly(doc.created_at) : '날짜 없음';
+
+            const card = document.createElement('div');
+            card.className = 'bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition cursor-pointer flex flex-col group';
+            card.innerHTML = `
+                <div class="h-32 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-center mb-3 group-hover:bg-blue-50 transition">
+                    <i class="fa-solid ${icon} text-4xl text-gray-300 group-hover:text-blue-400 transition"></i>
+                </div>
+                <h3 class="text-sm font-bold text-gray-900 truncate-text mb-1" title="${doc.file_name}">${doc.file_name}</h3>
+                <p class="text-[11px] text-gray-500 truncate-text"><i class="fa-solid fa-map-pin mr-1"></i>${doc.trip_title}</p>
+                <div class="mt-auto pt-3 flex justify-between items-center text-[10px] text-gray-400">
+                    <span>${doc.item_title}</span>
+                    <span>${dateStr}</span>
+                </div>
+            `;
+            
+            card.addEventListener('click', async () => {
+                try {
+                    const docDetail = await DocketAPI.fetchDocumentDetail(doc.document_id);
+                    if (docDetail && docDetail.original_url) {
+                        window.open(docDetail.original_url, '_blank');
+                    } else {
+                        alert('원본 문서 링크를 찾을 수 없습니다.');
+                    }
+                } catch (error) {
+                    alert('문서 정보를 불러오는 데 실패했습니다.');
+                }
+            });
+            container.appendChild(card);
+        });
+    },
+
+    handleDocsSearch: (event) => {
+        const query = event.target.value.toLowerCase().trim();
+        if (!query) {
+            UIRenderer.renderDocsList(UIRenderer.docsData);
+            return;
+        }
+        
+        const filteredDocs = UIRenderer.docsData.filter(doc => 
+            (doc.file_name && doc.file_name.toLowerCase().includes(query)) ||
+            (doc.trip_title && doc.trip_title.toLowerCase().includes(query)) ||
+            (doc.item_title && doc.item_title.toLowerCase().includes(query))
+        );
+        UIRenderer.renderDocsList(filteredDocs);
     }
 };
 
@@ -296,20 +621,14 @@ const UploadController = {
     returnState: 'state-list',
     uploadMode: 'trip',
 
-    // 여행 추가와 일정 추가가 서로 다른 API로 연결될 수 있도록 모드를 저장합니다.
     openUpload: (uploadMode = 'trip', returnState = 'state-list') => {
         UploadController.uploadMode = uploadMode;
         UploadController.returnState = returnState;
         const isSchedule = uploadMode === 'schedule';
         document.getElementById('upload-panel-title').innerText = isSchedule ? '새 일정 추가' : '새 여행 추가';
-        document.getElementById('trip-text-label').innerText = isSchedule ? '일정 내용' : '여행 일정 내용';
-        document.getElementById('trip-text-input').placeholder = isSchedule
-            ? '일정 이름, 시간, 장소, 예약 정보를 직접 입력하세요.'
-            : '여행 이름, 일정, 예약 정보를 직접 입력하세요.';
         UIRenderer.setAppClass('state-upload');
     },
 
-    // 업로드 상태를 초기화하고 진입했던 화면으로 돌아갑니다.
     closeUpload: () => {
         const returnState = UploadController.returnState;
         UploadController.clearFiles();
@@ -318,7 +637,6 @@ const UploadController = {
         UIRenderer.setAppClass(returnState);
     },
 
-    // 파일 드래그 앤 드롭에 필요한 브라우저 기본 동작을 연결합니다.
     initDragAndDrop: () => {
         const dropZone = document.getElementById('drop-zone');
         const prevent = (event) => { event.preventDefault(); event.stopPropagation(); };
@@ -329,34 +647,28 @@ const UploadController = {
         dropZone.addEventListener('click', () => document.getElementById('file-input').click());
     },
 
-    // 선택되거나 드롭된 파일을 업로드 대기 목록에 추가합니다.
     handleFiles: (files) => {
         UploadController.stagedFiles = [...UploadController.stagedFiles, ...Array.from(files)];
         UploadController.renderFileList();
     },
 
-    // 대기 목록에서 특정 파일을 제거합니다.
     removeFile: (index) => {
         UploadController.stagedFiles.splice(index, 1);
         UploadController.renderFileList();
     },
 
-    // 대기 파일과 진행률을 모두 초기화합니다.
     clearFiles: () => {
         UploadController.stagedFiles = [];
         document.getElementById('file-input').value = '';
-        document.getElementById('trip-text-input').value = '';
         UploadController.renderFileList();
         document.getElementById('upload-progress-container').classList.add('hidden');
     },
 
-    // 파일 또는 직접 입력한 텍스트가 있는지 확인합니다.
+    // 텍스트 입력 체크를 제거하고 오직 파일 업로드 개수만 확인
     hasInput: () => {
-        const textInput = document.getElementById('trip-text-input');
-        return UploadController.stagedFiles.length > 0 || textInput.value.trim().length > 0;
+        return UploadController.stagedFiles.length > 0;
     },
 
-    // 현재 대기 중인 파일과 텍스트를 화면에 그리고 분석 버튼 상태를 갱신합니다.
     renderFileList: () => {
         const container = document.getElementById('file-list-container');
         const parseButton = document.getElementById('btn-parse');
@@ -384,7 +696,6 @@ const UploadController = {
         }
     },
 
-    // 실제 분석을 대신해 진행률을 시뮬레이션하고 완료 후 목록을 갱신합니다.
     startParsing: () => {
         if (!UploadController.hasInput()) return;
         document.getElementById('btn-parse').disabled = true;
@@ -408,16 +719,26 @@ const UploadController = {
     }
 };
 
-// DOM이 준비된 뒤 초기 데이터와 파일 업로드 기능을 연결합니다.
+// 오류 수정: 중첩(Nested) 및 중복 선언된 이벤트 리스너 제거 후 단일화
 document.addEventListener('DOMContentLoaded', () => {
     if (!sessionStorage.getItem('docket_user') || sessionStorage.getItem('docket_auth_version') !== '2') {
         sessionStorage.removeItem('docket_user');
         window.location.replace('login.html');
         return;
     }
+    
     MapController.init();
-    UIRenderer.renderTripList();
     UploadController.initDragAndDrop();
+
+    // 초기 해시 딥링킹 처리
+    if (window.location.hash === '#docs') {
+        UIRenderer.openDocs();
+    } else {
+        UIRenderer.renderTripList();
+        UIRenderer.setLNBActive('trip');
+    }
+
+    // 기본 버튼 이벤트 바인딩
     document.getElementById('add-trip-button').addEventListener('click', () => UploadController.openUpload('trip', 'state-list'));
     document.getElementById('add-schedule-button').addEventListener('click', () => UploadController.openUpload('schedule', 'state-trip'));
     document.getElementById('close-timeline-button').addEventListener('click', UIRenderer.closeTimeline);
@@ -427,6 +748,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('clear-files-button').addEventListener('click', UploadController.clearFiles);
     document.getElementById('btn-parse').addEventListener('click', UploadController.startParsing);
     document.getElementById('lnb-signout-button').addEventListener('click', GoogleAuth.signOut);
+    
+    // 모달 제어 바인딩
     document.getElementById('user-info-button').addEventListener('click', () => {
         const user = GoogleAuth.getStoredUser();
         if (!user) return;
@@ -446,7 +769,22 @@ document.addEventListener('DOMContentLoaded', () => {
         ThemeController.bind(document.getElementById('user-modal-content'));
         document.getElementById('user-info-modal').classList.remove('hidden');
     });
+    
     document.getElementById('close-user-modal-button').addEventListener('click', () => {
         document.getElementById('user-info-modal').classList.add('hidden');
+    });
+
+    // LNB 및 검색 이벤트 단일화 바인딩
+    document.getElementById('lnb-docs-button')?.addEventListener('click', () => {
+        window.location.hash = 'docs';
+        UIRenderer.openDocs();
+    });
+    
+    document.getElementById('docs-search-input')?.addEventListener('keyup', UIRenderer.handleDocsSearch);
+    
+    document.getElementById('lnb-trip-button')?.addEventListener('click', () => {
+        window.location.hash = '';
+        UIRenderer.setAppClass('state-list');
+        UIRenderer.setLNBActive('trip');
     });
 });
