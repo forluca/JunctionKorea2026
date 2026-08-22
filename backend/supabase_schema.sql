@@ -32,8 +32,7 @@ create table if not exists items (
 
 create table if not exists documents (
   id uuid primary key default gen_random_uuid(),
-  trip_id uuid references trips(id) on delete set null,
-  item_id uuid references items(id) on delete set null,
+  item_id uuid references items(id) on delete set null,  -- 여행은 item_id → items.trip_id로 조회
   file_name text,
   mime_type text,
   storage_path text,
@@ -45,7 +44,7 @@ create table if not exists documents (
 );
 
 create index if not exists idx_items_trip on items(trip_id, starts_at);
-create index if not exists idx_documents_trip on documents(trip_id);
+create index if not exists idx_documents_item on documents(item_id);
 
 -- 스토리지 버킷(documents)은 서버가 시작 시 자동 생성을 시도하지만,
 -- 권한 문제가 나면 대시보드 > Storage에서 'documents' 버킷을 직접 만들어 주세요.

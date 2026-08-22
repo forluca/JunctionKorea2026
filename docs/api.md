@@ -101,13 +101,15 @@ curl -X POST http://127.0.0.1:8000/api/documents/parse \
 - `extracted`의 필드 구성은 docType마다 다름 ([backend/app/graph/schemas.py](../backend/app/graph/schemas.py) 참고).
 - `notes`: 사용자가 알아둬야 할 사항의 **한국어 문장 배열** — 예약 확정 상태, 현장 교환 필요 여부, 취소기한, 잔글씨 주의사항이 전부 여기로 통합됨. `items.notes`(jsonb)에 저장되어 일정 상세 조회에서도 반환. UI 로직용 구조화 값은 별도 필드 사용: 취소기한 D-day → `item.cancellation_deadline`(DB), 충돌 배지 → `hasConflict`/`conflictMsg`.
 - `targetType=trip`이면 여행 제목·기간이 문서에서 자동 생성됨. 응답의 `trip`으로 갱신된 값 확인.
-- `actions`의 툴 상태: `register_calendar`는 Google Calendar 연동 완료(단, `backend/credentials.json` + 최초 OAuth 인증 필요 — 없으면 `error`로 표시되고 파이프라인은 계속됨). `set_reminder`/`record_expense`는 아직 `stub`.
+- `actions`의 툴 상태: `register_calendar`는 Google Calendar 연동 완료 — 이벤트 등록 + **1시간 전 팝업 알림**까지 설정됨(리마인드 기능 통합). `record_expense`는 영수증 확장 시 구현 예정(`stub`).
 
 ### 에러
 
 | 코드 | 원인 |
 |---|---|
 | `400` | 빈 파일 |
+| `404` | 존재하지 않는 tripId |
+| `409` | 중복 문서(같은 예약번호) — 위 "충돌/중복 정책" 참고. 시간 겹침은 409가 아니라 200+conflictMsg |
 | `415` | 지원 형식(PDF/이미지/오피스/한글) 이외의 파일 |
 | `422` | 필수 필드 누락 (FastAPI 기본 검증) |
 | `500` | Upstage/Supabase 호출 실패 등 (detail에 원인) |
@@ -132,6 +134,7 @@ curl -X POST http://127.0.0.1:8000/api/documents/parse \
 ```
 
 - `startDate`/`endDate`는 소속 일정들의 최소/최대 날짜로 자동 계산됨. 일정이 없으면 `null`.
+- `status`: 조회 시점에 계산됨 — `endDate`가 오늘보다 이전이면 `"past"`, 여행 전/여행 중/종료일 당일이면 `"active"` (일정 없는 여행도 `active`). 2종뿐.
 - `conflictCount` = 해당 여행에서 `hasConflict=true`인 일정 수.
 - 정렬: 생성일 내림차순.
 
@@ -168,9 +171,18 @@ curl -X POST http://127.0.0.1:8000/api/documents/parse \
 ```json
 {
   "id": "9d4e…",
+  "tripId": "b81c…",
+  "documentId": "3f2a…",
+  "type": "hotel",
   "title": "힐튼 오사카 체크인",
   "timeStr": "2026-09-01 15:00 ~ 2026-09-05 11:00",
+  "startsAt": "2026-09-01T15:00:00+00:00",
+  "endsAt": "2026-09-05T11:00:00+00:00",
+  "location": "1-8-8 Umeda, Kita-ku, Osaka",
   "price": 720000,
+  "currency": "KRW",
+  "bookingRef": "HTL-2026-88431",
+  "cancellationDeadline": "2026-08-28T23:59:00+00:00",
   "hasConflict": true,
   "conflictDetail": "시간이 겹치는 일정: 유니버설 스튜디오 입장",
   "qrCodeStr": "HTL-2026-88431",
@@ -191,9 +203,31 @@ curl -X POST http://127.0.0.1:8000/api/documents/parse \
 
 ---
 
-## 충돌 판정 규칙
+## 충돌/중복 정책
 
-- 같은 여행 안에서 시간 구간이 겹치면 충돌 (`starts_at < 상대.ends_at && ends_at > 상대.starts_at`).
+**① 중복(duplicate) — 같은 여행에 같은 예약번호가 이미 있으면 저장하지 않고(캘린더 등록도 중단) `409 Conflict`로 응답:**
+
+```json
+{
+  "error": "rejected",
+  "reason": "duplicate",
+  "message": "문서가 중복되었습니다.",
+  "conflicts": [ { "id": "…", "title": "기존 일정 제목" } ],
+  "documentId": "…",
+  "docType": "tour",
+  "notes": ["…"]
+}
+```
+
+프론트는 `message`를 그대로 토스트/알럿으로 띄우면 됨.
+
+**② 시간 겹침(overlap) — 에러 없이 정상 저장(200)하되 충돌 표시만:**
+- 일정은 저장되고 캘린더에도 등록됨
+- `item.hasConflict: true` + `conflictMsg`/`conflictDetail`에 "시간이 겹치는 일정: <제목>" 기록
+- 프론트는 타임라인에서 충돌 배지로 표시
+
+**시간 겹침 판정 규칙:**
+- 같은 여행 안에서 `starts_at < 상대.ends_at && ends_at > 상대.starts_at`이면 겹침.
 - 종료 시각이 없는 일정은 시작 후 2시간으로 간주.
 - 시작 시각이 없는 일정(영수증 등)은 충돌 검사에서 제외.
 

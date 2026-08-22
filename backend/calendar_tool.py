@@ -48,6 +48,7 @@ def create_event(
     end_time,
     description=None,
     location=None,
+    reminder_minutes=None,  # 이벤트 N분 전 팝업 알림 (None이면 캘린더 기본 설정)
 ):
     service = get_calendar_service()
 
@@ -70,6 +71,12 @@ def create_event(
 
     if location:
         event["location"] = location
+
+    if reminder_minutes is not None:
+        event["reminders"] = {
+            "useDefault": False,
+            "overrides": [{"method": "popup", "minutes": int(reminder_minutes)}],
+        }
 
     created_event = (
         service.events()
