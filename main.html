@@ -20,28 +20,25 @@
 <body class="h-screen w-screen overflow-hidden flex bg-[#f3f4f6] text-[#1e293b] antialiased state-list" id="app-container">
 
     <nav class="w-[64px] h-full bg-[#1e3a8a] flex flex-col items-center py-6 border-r border-blue-900 shadow-lg z-30 flex-shrink-0">
-        <a href="#" class="app-logo w-10 h-10 bg-white text-[#1e3a8a] text-xl font-black flex items-center justify-center rounded-xl shadow-sm mb-10 text-center" aria-label="Docket 홈"><span class="logo-fallback">D.</span><img src="assets/logo.png" alt="Docket" onerror="this.hidden=true"></a>
-        <div class="flex flex-col w-full gap-2">
-            <!-- 식별자(id) 추가 및 기본 활성화 상태 유지 -->
-            <button id="lnb-trip-button" class="w-full py-4 flex flex-col items-center gap-1.5 bg-blue-800 text-white border-l-4 border-white transition">
-                <i class="fa-solid fa-plane-departure text-xl"></i><span class="text-[11px] font-medium tracking-wide">나의 여행</span>
-            </button>
-            <a href="wallet.html" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition">
-                <i class="fa-solid fa-wallet text-xl"></i><span class="text-[11px] font-medium tracking-wide">통합 지갑</span>
-            </a>
-            <button id="lnb-docs-button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition">
-                <i class="fa-solid fa-folder-open text-xl"></i><span class="text-[11px] font-medium tracking-wide">문서 보관함</span>
-            </button>
-        </div>
-        <div class="mt-auto flex w-full flex-col gap-2">
-            <button id="user-info-button" type="button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="사용자 정보">
-                <i class="fa-solid fa-user text-xl"></i><span class="text-[11px] font-medium tracking-wide">내 정보</span>
-            </button>
-            <button id="lnb-signout-button" type="button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="로그아웃">
-                <i class="fa-solid fa-right-from-bracket text-xl"></i><span class="text-[11px] font-medium tracking-wide">로그아웃</span>
-            </button>
-        </div>
-    </nav>
+    <a href="#" class="app-logo w-10 h-10 bg-white text-[#1e3a8a] text-xl font-black flex items-center justify-center rounded-xl shadow-sm mb-10 text-center" aria-label="Docket 홈"><span class="logo-fallback">D.</span><img src="assets/logo.png" alt="Docket" onerror="this.hidden=true"></a>
+    <div class="flex flex-col w-full gap-2">
+        <button id="lnb-trip-button" class="w-full py-4 flex flex-col items-center gap-1.5 bg-blue-800 text-white border-l-4 border-white transition">
+            <i class="fa-solid fa-plane-departure text-xl"></i><span class="text-[11px] font-medium tracking-wide">나의 여행</span>
+        </button>
+        <!-- 통합 지갑 태그 완전 삭제 유지 -->
+        <button id="lnb-docs-button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition">
+            <i class="fa-solid fa-folder-open text-xl"></i><span class="text-[11px] font-medium tracking-wide">문서 보관함</span>
+        </button>
+    </div>
+    <div class="mt-auto flex w-full flex-col gap-2">
+        <button id="user-info-button" type="button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="사용자 정보">
+            <i class="fa-solid fa-user text-xl"></i><span class="text-[11px] font-medium tracking-wide">내 정보</span>
+        </button>
+        <button id="lnb-signout-button" type="button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="로그아웃">
+            <i class="fa-solid fa-right-from-bracket text-xl"></i><span class="text-[11px] font-medium tracking-wide">로그아웃</span>
+        </button>
+    </div>
+</nav>
 
     <!-- 패널 1: 여행 목록 -->
     <aside id="list-panel" class="h-full bg-white border-r border-gray-200 flex-col z-20 flex-shrink-0 relative">
@@ -54,26 +51,39 @@
         </header>
         
         <div id="trip-list-container" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-50/50 pb-28"></div>
-        <div class="absolute bottom-0 left-0 w-full p-4 bg-white border-t border-gray-100">
-            <button id="add-trip-button" class="w-full bg-[#1e3a8a] hover:bg-[#172554] text-white font-medium py-3 rounded-xl transition-all flex justify-center items-center gap-2">
-                <i class="fa-solid fa-plus text-sm"></i> 여행 추가
-            </button>
+        <!-- 기존 '일정 추가' 버튼을 제거하고 인라인 드롭존 배치 -->
+        <div class="p-4 bg-white border-t border-gray-200 flex-shrink-0">
+            <div id="inline-drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-4 flex items-center justify-center gap-2 text-center cursor-pointer hover:bg-gray-50 transition bg-white">
+                <i class="fa-solid fa-cloud-arrow-up text-lg text-gray-400"></i>
+                <div class="text-xs text-gray-600 font-medium">문서를 여기에 끌어놓거나 클릭하여 추가</div>
+                <input type="file" id="inline-file-input" multiple accept=".pdf,image/*" class="hidden">
+            </div>
+            <div id="inline-file-list" class="mt-2 space-y-1.5 empty:hidden text-xs"></div>
         </div>
     </aside>
 
-    <!-- 패널 2: 타임라인 -->
-    <section id="trip-panel" class="h-full bg-gray-50 border-r border-gray-200 flex-col z-20 flex-shrink-0 relative shadow-xl">
-        <header class="h-[76px] px-5 border-b border-gray-200 bg-white flex items-center gap-3 flex-shrink-0">
-            <button id="close-timeline-button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition">
+    <!-- 패널 2: 타임라인 (다크 모드 배경색 클래스 통일) -->
+    <section id="trip-panel" class="h-full bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col z-20 flex-shrink-0 relative shadow-xl">
+        <header class="h-[76px] px-5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center gap-3 flex-shrink-0">
+            <button id="close-timeline-button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition">
                 <i class="fa-solid fa-arrow-left"></i>
             </button>
             <div class="truncate-text flex-1 flex flex-col justify-center" id="timeline-header-info"></div>
         </header>
-        <div id="timeline-container" class="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar relative"></div>
-        <div class="p-4 bg-white border-t border-gray-200">
-            <button id="add-schedule-button" class="w-full bg-[#1e3a8a] hover:bg-[#172554] text-white font-medium py-3 rounded-xl transition-all flex justify-center items-center gap-2">
-                <i class="fa-solid fa-plus text-sm"></i> 일정 추가
-            </button>
+        
+        <!-- 스크롤 영역 배경색을 패널과 동일하게 일치 -->
+        <div class="flex-1 min-h-0 overflow-y-auto flex flex-col bg-gray-50 dark:bg-gray-900">
+            <div id="timeline-container" class="p-5 space-y-4 relative"></div>
+        </div>
+
+        <!-- 하단 드롭존 영역 배경 통일 -->
+        <div class="p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
+            <div id="inline-drop-zone" class="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition bg-white dark:bg-gray-900">
+                <i class="fa-solid fa-cloud-arrow-up text-lg text-gray-400 dark:text-gray-500"></i>
+                <div class="text-xs text-gray-600 dark:text-gray-300 font-medium">문서를 여기에 끌어놓거나 클릭하여 추가</div>
+                <input type="file" id="inline-file-input" multiple accept=".pdf,image/*" class="hidden">
+            </div>
+            <div id="inline-file-list" class="mt-2 space-y-1.5 empty:hidden text-xs"></div>
         </div>
     </section>
 
@@ -121,7 +131,7 @@
             </button>
             <h2 id="upload-panel-title" class="text-xl font-bold text-gray-900">새 여행 문서 업로드</h2>
         </header>
-        <div class="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-gray-50/50">
+        <div class="flex-1 overflow-y-auto p-6 space-y-4 relative bg-gray-50/50">
             <!-- 텍스트 입력 카드 영역 완전 삭제 완료 -->
             
             <ul class="text-xs text-gray-500 list-disc pl-4 mb-4">
@@ -161,24 +171,25 @@
         </div>
     </main>
 
-    <div id="user-info-modal" class="user-modal hidden" role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
-        <section class="user-modal-card">
-            <div class="user-page-heading">
-                <button id="close-user-modal-button" class="user-back-button" type="button" aria-label="사용자 정보 닫기">&times;</button>
-                <div>
-                    <p class="login-eyebrow">ACCOUNT</p>
-                    <h1 id="user-modal-title">사용자 정보</h1>
-                </div>
+    <!-- 사용자 정보 모달 구조 예시 -->
+    <div id="user-info-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <!-- bg-white (라이트 모드 기본 배경)와 dark:bg-gray-800 (다크 모드 배경) 명시 -->
+        <div class="relative bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-full max-w-md p-6 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700">
+            <button id="close-user-modal-button" class="absolute right-4 top-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-300 transition">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            
+            <h3 class="text-lg font-bold mb-4">내 정보</h3>
+            <div id="user-modal-content" class="space-y-3">
+                <!-- 동적 컨텐츠 -->
             </div>
-            <div id="user-modal-content" class="user-profile-content"></div>
-        </section>
+        </div>
     </div>
 
     <script src="js/config.local.js"></script>
     <script src="js/theme.js"></script>
     <script src="js/google-auth.js"></script>
     <script src="js/api.js"></script>
-    <script src="js/ticket-slider.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

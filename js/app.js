@@ -37,7 +37,7 @@ const MapController = {
         window.initGoogleMap = () => {
             const map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 48.8566, lng: 2.3522 },
-                zoom: 12,
+                zoom: 13,
                 styles: MapController.getMapStyles(),
                 mapTypeControl: false,
                 streetViewControl: false,
@@ -115,7 +115,7 @@ const MapController = {
                         const uniqueNodeId = rawType === 'hotel' ? `${item.id}-in` : `${item.id}-in`;
                         marker.addListener('click', () => {
                             MapController.map.panTo(position);
-                            setTimeout(() => MapController.map.setZoom(12), 50);
+                            setTimeout(() => MapController.map.setZoom(13), 50);
                             if (typeof UIRenderer !== 'undefined' && UIRenderer.openItem) {
                                 UIRenderer.openItem(item.id, uniqueNodeId);
                             }
@@ -362,13 +362,23 @@ const UIRenderer = {
 
     closeTimeline: () => {
         const appContainer = document.getElementById('app-container');
+        if (!appContainer) return;
+
+        // 상세 아이템 패널이 열려 있는 경우 상세 창을 닫고 타임라인 상태로 복귀
         if (appContainer.classList.contains('state-item')) {
-            document.getElementById('item-panel').classList.add('is-loading');
+            const itemPanel = document.getElementById('item-panel');
+            if (itemPanel) {
+                itemPanel.classList.add('is-loading');
+            }
             UIRenderer.selectedItemId = null;
             UIRenderer.setAppClass('state-trip');
             return;
         }
-        MapController.clearMarkers();
+
+        // 그 외의 경우 마커를 지우고 전체 여행 목록 상태로 복귀
+        if (typeof MapController !== 'undefined' && typeof MapController.clearMarkers === 'function') {
+            MapController.clearMarkers();
+        }
         UIRenderer.setAppClass('state-list');
     },
 
@@ -443,27 +453,41 @@ const UIRenderer = {
             html += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl mb-4"><h4 class="text-sm text-red-800 mb-2" style="font-weight: 700;"><i class="fa-solid fa-triangle-exclamation"></i> 일정 충돌 발생</h4><p class="text-xs text-red-600 leading-relaxed">${conflictMessage}</p></div>`;
         }
 
+        // 장소, 예약 번호, 무료 취소 기한에 이어 결제 금액과 원본 문서 보기까지 동일한 리스트 디자인으로 통합
         html += `
             <div class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm mb-4">
                 <dl class="space-y-3">
-                    <div class="flex justify-between">
+                    <div class="flex justify-between items-center">
                         <dt class="text-xs text-gray-500">장소</dt>
                         <dd class="text-xs font-medium text-gray-900">${displayLocation}</dd>
                     </div>
-                    <div class="flex justify-between border-t border-gray-50 pt-3">
+                    <div class="flex justify-between items-center border-t border-gray-50 pt-3">
                         <dt class="text-xs text-gray-500">예약 번호</dt>
                         <dd class="text-xs font-medium text-gray-900">${displayBookingRef}</dd>
                     </div>
                     ${displayCancelDead ? `
-                    <div class="flex justify-between border-t border-gray-50 pt-3">
+                    <div class="flex justify-between items-center border-t border-gray-50 pt-3">
                         <dt class="text-xs text-gray-500">무료 취소 기한</dt>
                         <dd class="text-xs font-medium text-red-600">${displayCancelDead}</dd>
                     </div>
                     ` : ''}
+                    <div class="flex justify-between items-center border-t border-gray-50 pt-3">
+                        <dt class="text-xs text-gray-500">결제 금액</dt>
+                        <dd class="text-xs font-medium text-gray-900">${displayPrice}</dd>
+                    </div>
+                    <div class="flex justify-between items-center border-t border-gray-50 pt-3">
+                        <dt class="text-xs text-gray-500">원본 문서</dt>
+                        <dd>
+                            <button id="view-document-button" class="text-blue-600 text-xs hover:underline font-bold" ${data.document_id ? '' : 'disabled'}>
+                                문서 보기
+                            </button>
+                        </dd>
+                    </div>
                 </dl>
             </div>
         `;
 
+        // 참고 사항(Notes) 영역 조건부 렌더링 유지
         if (displayNotes.length > 0) {
             html += `
                 <div class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm mb-4">
@@ -474,30 +498,7 @@ const UIRenderer = {
                 </div>
             `;
         }
-
-        html += `<div class="bg-white border border-gray-200 p-5 rounded-xl text-center shadow-sm">`;
-
-        if (validTickets.length > 0) {
-            html += `
-                <p class="text-xs text-gray-500 mb-3">입장용 QR 코드 (현장 제시)</p>
-                <div class="detail-ticket-slider" data-pass-id="${data.id}" data-ticket-index="0">
-                    <button class="wallet-ticket-arrow wallet-ticket-prev" type="button" aria-label="이전 티켓"><i class="fa-solid fa-chevron-left"></i></button>
-                    <div class="wallet-ticket-view"><div class="wallet-qr"><i class="fa-solid fa-qrcode"></i></div><strong class="wallet-ticket-code">${validTickets[0].qr_code}</strong><small class="wallet-ticket-label">${validTickets[0].label || '티켓 1'}</small></div>
-                    <button class="wallet-ticket-arrow wallet-ticket-next" type="button" aria-label="다음 티켓"><i class="fa-solid fa-chevron-right"></i></button>
-                    <div class="wallet-ticket-dots">${validTickets.map((ticket, index) => `<button type="button" class="wallet-ticket-dot${index === 0 ? ' is-active' : ''}" data-ticket-index="${index}" aria-label="${ticket.label || `티켓 ${index + 1}`} "></button>`).join('')}</div>
-                </div>
-            `;
-        }
-
-        html += `
-                <div class="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-                    <span class="text-xs text-gray-600">결제 금액: ${displayPrice}</span>
-                    <button id="view-document-button" class="text-blue-600 text-xs hover:underline" style="font-weight: 700;" ${data.document_id ? '' : 'disabled'}>
-                        원본 문서 보기
-                    </button>
-                </div>
-            </div>
-        `;
+        
         content.innerHTML = html;
 
         if (validTickets.length > 0) {
@@ -739,35 +740,57 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 기본 버튼 이벤트 바인딩
-    document.getElementById('add-trip-button').addEventListener('click', () => UploadController.openUpload('trip', 'state-list'));
-    document.getElementById('add-schedule-button').addEventListener('click', () => UploadController.openUpload('schedule', 'state-trip'));
     document.getElementById('close-timeline-button').addEventListener('click', UIRenderer.closeTimeline);
     document.getElementById('close-upload-button').addEventListener('click', UploadController.closeUpload);
     document.getElementById('file-input').addEventListener('change', event => UploadController.handleFiles(event.target.files));
-    document.getElementById('trip-text-input').addEventListener('input', UploadController.renderFileList);
     document.getElementById('clear-files-button').addEventListener('click', UploadController.clearFiles);
     document.getElementById('btn-parse').addEventListener('click', UploadController.startParsing);
     document.getElementById('lnb-signout-button').addEventListener('click', GoogleAuth.signOut);
     
     // 모달 제어 바인딩
-    document.getElementById('user-info-button').addEventListener('click', () => {
-        const user = GoogleAuth.getStoredUser();
+    document.getElementById('user-info-button')?.addEventListener('click', () => {
+        let user;
+        try {
+            user = JSON.parse(sessionStorage.getItem('docket_user'));
+        } catch (error) {
+            user = null;
+        }
+
         if (!user) return;
+
         const displayName = user.name || user.email || 'Google 사용자';
         const email = user.email || '이메일 정보 없음';
-        document.getElementById('user-modal-content').innerHTML = `
-            <div class="user-profile-summary">
-                <div class="user-profile-avatar">${displayName.charAt(0).toUpperCase()}</div>
-                <div><h2>${displayName}</h2><p>${email}</p></div>
-            </div>
-            <div class="theme-setting"><span>화면 테마</span><div class="theme-options"><button type="button" data-theme-choice="light"><i class="fa-solid fa-sun"></i> 라이트</button><button type="button" data-theme-choice="dark"><i class="fa-solid fa-moon"></i> 다크</button></div></div>
-            <dl class="user-detail-list">
-                <div><dt>로그인 방식</dt><dd>Google 계정</dd></div>
-                <div><dt>서비스 이용 상태</dt><dd class="user-status">이용 중</dd></div>
-            </dl>
-        `;
-        ThemeController.bind(document.getElementById('user-modal-content'));
-        document.getElementById('user-info-modal').classList.remove('hidden');
+        const initial = displayName.charAt(0).toUpperCase();
+
+        const modalContent = document.getElementById('user-modal-content');
+        if (modalContent) {
+            modalContent.innerHTML = `
+                <!-- 닉네임/이메일 블록: 모든 면에 윤곽선(border) 삽입 -->
+                <div class="user-profile-summary flex items-center gap-3.5 p-3.5 border border-gray-200 rounded-xl bg-white shadow-sm">
+                    <div class="user-profile-avatar w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-lg flex-shrink-0">${initial}</div>
+                    <div class="min-w-0">
+                        <h2 class="text-sm font-bold text-gray-900 truncate">${displayName}</h2>
+                        <p class="text-xs text-gray-500 truncate">${email}</p>
+                    </div>
+                </div>
+
+                <!-- 화면 테마 항목 (하단 항목과 폰트 크기 및 색상 일치) -->
+                <div class="theme-setting py-3 flex justify-between items-center text-xs">
+                    <span class="font-large text-gray-500">화면 테마</span>
+                    <div class="theme-options flex gap-1.5">
+                        <button type="button" data-theme-choice="light" class="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100"><i class="fa-solid fa-sun"></i> 라이트</button>
+                        <button type="button" data-theme-choice="dark" class="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100"><i class="fa-solid fa-moon"></i> 다크</button>
+                    </div>
+                </div>
+                <dl class="user-detail-list pt-2 space-y-3 text-xs border-t border-transparent">
+                    <div class="flex justify-between items-center"><dt class="text-gray-500 font-medium">로그인 방식</dt><dd class="font-bold text-gray-900">Google 계정</dd></div>
+                    <div class="flex justify-between items-center pt-2 border-t border-transparent"><dt class="text-gray-500 font-medium">서비스 이용 상태</dt><dd class="font-bold text-gray-900">이용 중</dd></div>
+                </dl>
+                                    
+            `;
+            ThemeController.bind(modalContent);
+            document.getElementById('user-info-modal').classList.remove('hidden');
+        }
     });
     
     document.getElementById('close-user-modal-button').addEventListener('click', () => {
@@ -787,4 +810,31 @@ document.addEventListener('DOMContentLoaded', () => {
         UIRenderer.setAppClass('state-list');
         UIRenderer.setLNBActive('trip');
     });
+
+    // 하단 인라인 드롭존 이벤트 바인딩
+    const inlineDropZone = document.getElementById('inline-drop-zone');
+    const inlineFileInput = document.getElementById('inline-file-input');
+
+    if (inlineDropZone && inlineFileInput) {
+        const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => inlineDropZone.addEventListener(eventName, prevent, false));
+        ['dragenter', 'dragover'].forEach(eventName => inlineDropZone.addEventListener(eventName, () => inlineDropZone.classList.add('border-blue-500', 'bg-blue-50/50'), false));
+        ['dragleave', 'drop'].forEach(eventName => inlineDropZone.addEventListener(eventName, () => inlineDropZone.classList.remove('border-blue-500', 'bg-blue-50/50'), false));
+        
+        inlineDropZone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                UploadController.handleFiles(files);
+                UploadController.startParsing(); // 드롭 즉시 분석 시작 연동
+            }
+        });
+        
+        inlineDropZone.addEventListener('click', () => inlineFileInput.click());
+        inlineFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                UploadController.handleFiles(e.target.files);
+                UploadController.startParsing();
+            }
+        });
+    }
 });

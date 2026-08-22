@@ -366,3 +366,26 @@
 .state-docs #list-panel, .state-docs #trip-panel, .state-docs #item-panel, .state-docs #upload-panel, .state-docs #map-area { display: none !important; }
 #docs-panel { display: none; }
 .state-docs #docs-panel { display: flex; }
+
+/* 다크 모드 적용 시 문서 보관함 배경 및 텍스트 색상 대응 */
+[data-theme="dark"] #docs-panel,
+[data-theme="dark"] .docs-container {
+    background-color: #111827 !important; /* 다크 모드 전용 딥 그레이/블랙 배경 */
+    color: #f3f4f6 !important;
+}
+/* 사용자 정보 모달 및 내부 컴포넌트 테마별 배경색 대응 */
+#user-info-modal {
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* 라이트 모드 기본값 (강제 화이트 배경 지정) */
+:root, [data-theme="light"] #user-info-modal > div {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+}
+
+/* 다크 모드 적용 시 */
+[data-theme="dark"] #user-info-modal > div {
+    background-color: #1f2937 !important; /* 다크 그레이 */
+    color: #f9fafb !important;
+}
