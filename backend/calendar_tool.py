@@ -59,7 +59,7 @@ def create_event(
     end_time: str | datetime,
     description: str | None = None,
     location: str | None = None,
-    email_reminder_minutes: int | None = None,
+    email_reminder_minutes: int | None = ONE_DAY_MINUTES,
     calendar_id: str = "primary",
     service=None,
 ):

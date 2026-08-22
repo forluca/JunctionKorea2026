@@ -39,6 +39,7 @@ async def parse_document(
     targetType: str = Form("schedule"),
     tripId: str | None = Form(None),
     text: str | None = Form(None),
+    startDate: str | None = Form(None),
     dryRun: str = Form(""),
 ):
     file_bytes = await document.read()
@@ -86,6 +87,7 @@ async def parse_document(
         "target_type": targetType,
         "trip_id": trip_id,
         "user_text": text,
+        "trip_start_date": (startDate or "").strip() or None,
         "dry_run": dry,
     }
     result = await GRAPH.ainvoke(state)
@@ -137,9 +139,11 @@ async def parse_document(
         )
 
     # 여행 제목(새 여행일 때)과 기간을 일정 기준으로 갱신
+    # trip_title이 없으면(Studio Agent 출력엔 없음) 일정 제목으로 fallback
     item_fields = result.get("item_fields") or {}
-    if created_trip is not None and item_fields.get("trip_title"):
-        db.table("trips").update({"title": item_fields["trip_title"]}).eq("id", trip_id).execute()
+    new_title = item_fields.get("trip_title") or item_fields.get("title")
+    if created_trip is not None and new_title:
+        db.table("trips").update({"title": new_title}).eq("id", trip_id).execute()
     _update_trip_range(trip_id)
 
     item = None

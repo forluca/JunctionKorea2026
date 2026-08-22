@@ -22,6 +22,8 @@ from app.db import get_db
 
 TOOL_REGISTRY: dict[str, Callable[[dict, dict], dict]] = {}
 
+ACCOMMODATION_TYPES = {"hotel", "accommodation", "lodging", "hostel", "숙박"}
+
 
 def tool(name: str):
     def deco(fn: Callable[[dict, dict], dict]):
@@ -62,21 +64,34 @@ def _parse_dt(value: Any) -> datetime | None:
     return dt
 
 
+def _is_accommodation(item_type: str | None) -> bool:
+    return isinstance(item_type, str) and item_type.strip().lower() in ACCOMMODATION_TYPES
+
+
 def check_conflicts(trip_id: str, starts_at: str | None, ends_at: str | None,
-                    exclude_item_id: str | None = None) -> list[dict]:
-    """같은 여행 내 시간대가 겹치는 기존 일정을 찾는다."""
+                    exclude_item_id: str | None = None,
+                    item_type: str | None = None) -> list[dict]:
+    """같은 여행 내 시간대가 겹치는 기존 일정을 찾는다.
+
+    숙박 일정은 체류 기간 안에 다른 일정을 수행하므로 충돌 검사에서 제외한다.
+    """
+    if _is_accommodation(item_type):
+        return []
+
     new_start = _parse_dt(starts_at)
     if new_start is None:
         return []
     new_end = _parse_dt(ends_at) or (new_start + timedelta(hours=2))
 
     rows = (
-        get_db().table("items").select("id,title,starts_at,ends_at")
+        get_db().table("items").select("id,title,type,starts_at,ends_at")
         .eq("trip_id", trip_id).execute().data or []
     )
     conflicts = []
     for row in rows:
         if exclude_item_id and row["id"] == exclude_item_id:
+            continue
+        if _is_accommodation(row.get("type")):
             continue
         s = _parse_dt(row.get("starts_at"))
         if s is None:
@@ -97,7 +112,11 @@ def build_item_row(state: dict) -> tuple[dict, list[dict]]:
 
     starts_at = fields.get("starts_at") or None
     ends_at = fields.get("ends_at") or None
-    conflicts = check_conflicts(trip_id, starts_at, ends_at) if trip_id else []
+    item_type = state.get("doc_type", "other")
+    conflicts = (
+        check_conflicts(trip_id, starts_at, ends_at, item_type=item_type)
+        if trip_id else []
+    )
     # 가격 정규화: -1(미표기 sentinel) → NULL / 0+통화 없음 → 미표기로 간주해 NULL
     # / 0+통화 있음 → 진짜 무료(0 유지) / 양수 → 그대로
     price = extracted.get("total_price")
@@ -108,7 +127,7 @@ def build_item_row(state: dict) -> tuple[dict, list[dict]]:
     row = {
         "trip_id": trip_id,
         "document_id": state.get("document_id"),
-        "type": state.get("doc_type", "other"),
+        "type": item_type,
         "title": fields.get("title") or "제목 없음",
         "starts_at": _iso_or_none(starts_at),
         "ends_at": _iso_or_none(ends_at),
@@ -163,7 +182,12 @@ def _iso_or_none(value: Any) -> str | None:
 
 @tool("add_itinerary_bulk")
 def add_itinerary_bulk(args: dict, state: dict) -> dict:
-    """여행 계획 문서에서 정규화된 일정 목록을 일괄 등록한다 (건별 충돌 검사 포함)."""
+    """여행 계획 문서에서 정규화된 일정 목록을 일괄 등록한다.
+
+    충돌 검사는 **일괄 등록 전에 이미 존재하던 일정**하고만 수행한다 —
+    계획서 내부의 인접 일정끼리는 (종료시각 +2h 추정 규칙 때문에) 서로
+    겹침 판정이 나기 쉬운데, 계획서는 내부적으로 일관된 문서이므로 제외.
+    """
     trip_id = state.get("trip_id")
     if not trip_id:
         return {"status": "error", "detail": "trip_id missing"}
@@ -172,16 +196,38 @@ def add_itinerary_bulk(args: dict, state: dict) -> dict:
         return {"status": "error", "detail": "itinerary_items empty"}
 
     db = get_db()
+    # 일괄 등록 전 기존 일정 스냅샷 (배치 내부끼리는 충돌 검사 제외)
+    existing = (db.table("items").select("id,title,starts_at,ends_at")
+                .eq("trip_id", trip_id).execute().data or [])
+
+    def conflicts_with_existing(starts_at, ends_at) -> list[dict]:
+        s = _parse_dt(starts_at)
+        if s is None:
+            return []
+        e = _parse_dt(ends_at) or (s + timedelta(hours=2))
+        out = []
+        for row in existing:
+            es = _parse_dt(row.get("starts_at"))
+            if es is None:
+                continue
+            ee = _parse_dt(row.get("ends_at")) or (es + timedelta(hours=2))
+            if es < e and ee > s:
+                out.append({"id": row["id"], "title": row.get("title")})
+        return out
+
     item_ids: list[str] = []
     all_conflicts: list[dict] = []
     for it in items:
         starts_at = _iso_or_none(it.get("starts_at"))
         ends_at = _iso_or_none(it.get("ends_at"))
-        conflicts = check_conflicts(trip_id, starts_at, ends_at)
+        item_type = it.get("category") or "other"
+        conflicts = check_conflicts(
+            trip_id, starts_at, ends_at, item_type=item_type
+        )
         row = {
             "trip_id": trip_id,
             "document_id": state.get("document_id"),
-            "type": it.get("category") or "other",
+            "type": item_type,
             "title": it.get("title") or "제목 없음",
             "starts_at": starts_at,
             "ends_at": ends_at,
@@ -210,24 +256,58 @@ def register_calendar(args: dict, state: dict) -> dict:
     한 번 실행해 브라우저 OAuth 인증 → token.json 생성. 그 전에는 error로 스킵됨.
     """
     fields = state.get("item_fields") or {}
+    extracted = state.get("extracted") or {}
     title = args.get("title") or fields.get("title") or "여행 일정"
     start = _parse_dt(args.get("starts_at") or fields.get("starts_at"))
-    if start is None:
-        return {"status": "skipped", "detail": "시작 시각이 없어 캘린더 등록 생략"}
-    end = _parse_dt(args.get("ends_at") or fields.get("ends_at")) or (start + timedelta(hours=2))
+    cancellation_deadline = (
+        args.get("cancellation_deadline")
+        or extracted.get("cancellation_deadline")
+        or fields.get("cancellation_deadline")
+    )
+    if start is None and not cancellation_deadline:
+        return {
+            "status": "skipped",
+            "detail": "시작 시각과 취소 기한이 없어 캘린더 등록 생략",
+        }
+    end = (
+        _parse_dt(args.get("ends_at") or fields.get("ends_at"))
+        or (start + timedelta(hours=2) if start else None)
+    )
+    notes = state.get("notes") or []
+    description = (
+        "\n".join(str(note) for note in notes if note)
+        if isinstance(notes, list)
+        else str(notes)
+    ) or None
 
     try:
         import calendar_tool  # backend/calendar_tool.py (팀원 구현)
 
-        event = calendar_tool.create_event(
-            title=title,
-            start_time=start.strftime("%Y-%m-%dT%H:%M:%S"),
-            end_time=end.strftime("%Y-%m-%dT%H:%M:%S"),
-            description="\n".join(state.get("notes") or []) or None,
-            location=args.get("location") or fields.get("location"),
-            reminder_minutes=60,  # 리마인드 통합: 일정 1시간 전 팝업 알림
-        )
-        return {"status": "done", "event_link": event.get("htmlLink")}
+        service = calendar_tool.get_calendar_service()
+        result = {"status": "done"}
+        if start and end:
+            event = calendar_tool.create_event(
+                title=title,
+                start_time=start.strftime("%Y-%m-%dT%H:%M:%S"),
+                end_time=end.strftime("%Y-%m-%dT%H:%M:%S"),
+                description=description,
+                location=args.get("location") or fields.get("location"),
+                service=service,
+            )
+            result["event_link"] = event.get("htmlLink")
+
+        if cancellation_deadline:
+            cancellation_event = calendar_tool.create_cancellation_deadline_reminder(
+                {
+                    "title": title,
+                    "cancellation_deadline": cancellation_deadline,
+                    "cancellation_message": description,
+                },
+                service=service,
+            )
+            result["cancellation_event_link"] = cancellation_event.get("htmlLink")
+
+        return result
     except FileNotFoundError:
         return {"status": "error",
                 "detail": "credentials.json 없음 — backend/에 Google OAuth 키를 두고 "

@@ -18,21 +18,32 @@
 ## 1. `POST /api/documents/parse` — 문서 업로드·분석 및 저장
 
 문서 1개를 업로드하면 에이전트 파이프라인이 실행된다:
-`저장(ingest) → 유형 분류(classify) → 구조화(parse) ∥ 필드 추출(extract) → 판단(orchestrate) → 액션 실행(act)`
+
+`저장(ingest) → [Upstage Studio Agent ∥ QR/바코드 디코딩(로컬)] → 액션 실행(act)`
+
+**문서 유형 분기는 Studio Agent 내부에서 일어난다** — 분류·구조화·유형별 필드추출·판단을 Studio에 구성된 에이전트가 잡 하나로 수행:
+- 바우처/티켓으로 분류되면 → 일정 1건 + 액션(저장/캘린더/비용) 계획
+- 여행 계획서(itinerary)로 분류되면 → 일정 배열 생성, **저장만 수행** (캘린더/비용 액션 없음)
+
+중간 스텝 출력(parse HTML, Extract 필드)도 수확해 DB에 저장됨.
 
 ### 요청 — `multipart/form-data`
 
 | 필드 | 타입 | 필수 | 설명 |
 |---|---|---|---|
 | `document` | file | ✅ | PDF / 이미지(JPG·PNG·BMP·TIFF·**HEIC**) / DOCX / PPTX / XLSX / HWP·HWPX (그 외 415 에러, 50MB 이하) |
-| `targetType` | string | | `schedule` — 바우처·티켓 1건(일정 1개 생성, **구현 완료**) / `trip` — 전체 여행 계획 문서(**플로우 미구현** — 현재는 파일 저장 + 빈 여행 생성까지만). 기본 `schedule` |
+| `targetType` | string | | 처리 분기가 아니라 **여행 생성 방식**만 결정: `trip` → 새 여행 생성 / `schedule` → tripId의 기존 여행에 추가. 문서가 바우처인지 계획서인지는 Studio Agent가 자체 판별. 기본 `schedule` |
 | `tripId` | string(uuid) | | `targetType=schedule`일 때 대상 여행. 비어 있으면 새 여행이 생성됨 |
 | `text` | string | | 사용자 프롬프트(선택). orchestrator 판단에 반영됨 |
+| `startDate` | string | | **trip 전용(권장)**: 여행 시작일 `YYYY-MM-DD`. 계획서의 "Day 1/Day 2" 상대 날짜를 절대 날짜로 계산하는 기준. 없으면 문서의 절대 날짜 사용, 그것도 없으면 임시 배치 + 경고 |
 | `dryRun` | string | | `true`면 파이프라인은 전부 실행하되 **Storage/DB에 쓰지 않고** 미리보기만 반환 |
 
-> **분기 방식**: 요청의 `targetType`으로 명시적으로 분기한다 (Classify로 판별하지 않음).
-> `trip` 플로우는 자리만 잡아둔 상태 — 응답의 `actions`에 `{"tool": "trip_flow", "status": "not_implemented"}`가 담긴다.
-> 구현되면 일정 여러 개가 응답의 `items` 배열로 반환될 예정.
+> **응답 형태는 문서 유형에 따라 달라짐** (Studio Agent의 자체 분류 기준):
+> - 바우처/티켓 → 일정 1개가 `item`에 (docType: hotel/transportation/tour/other)
+> - 여행 계획서 → 일정 전체가 `items` 배열에 (docType: `itinerary`), 여행 제목·기간 자동 설정,
+>   `notes`엔 이동시간 촉박 구간 등 계획 자체에 대한 경고. `startDate`를 주면 "Day N" 상대
+>   날짜를 그 기준으로 배치(에이전트 임시 배치 날짜를 코드가 시프트).
+>   계획서의 충돌 검사는 **일괄 등록 전에 존재하던 일정하고만** 수행 (계획서 내부 항목끼리는 제외).
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/documents/parse \
@@ -107,10 +118,10 @@ curl -X POST http://127.0.0.1:8000/api/documents/parse \
 
 ### 프론트 참고사항
 
-- **처리 시간 10~20초** (Upstage 호출 3회 + LLM 1회). 업로드 애니메이션이 이 구간을 커버할 것.
+- **처리 시간: schedule 약 30~45초** (Studio Agent 잡 실행+폴링), **trip 약 20~40초**. 업로드 애니메이션이 이 구간을 커버할 것.
 - 최상위 키(`documentId`, `docType` 등)는 파이프라인 메타데이터, **`trip`/`item` 객체 내부는 DB 컬럼명 그대로**.
 - `docType`은 4종: `hotel` / `transportation`(항공·기차·버스·페리) / `tour`(투어·액티비티·관광지 입장권) / `other`(안전망) — 차근차근 확장 예정 (`targetType=trip`이면 classify를 건너뛰므로 `null`)
-- `items` 배열은 trip 플로우용으로 예약된 필드 — 현재는 항상 빈 배열.
+- `items` 배열: `targetType=trip`일 때 일괄 생성된 일정 전체 (schedule일 땐 빈 배열, 단건은 `item`에).
 - `dryRun=true` 응답은 형태가 다름: `{"dryRun": true, "docType", "wouldCreate": {"trip", "item"}, "extracted", "notes", "conflicts", "actions"}` — `wouldCreate.item`이 실제 insert될 row 미리보기.
 - `extracted`의 필드 구성은 docType마다 다름 ([backend/app/graph/schemas.py](../backend/app/graph/schemas.py) 참고).
 - `notes`: 사용자가 알아둬야 할 사항의 **한국어 문장 배열** — 예약 확정 상태, 현장 교환 필요 여부, 취소기한, 잔글씨 주의사항이 전부 여기로 통합됨. `items.notes`(jsonb)에 저장되어 일정 상세 조회에서도 반환. UI 로직용 구조화 값은 별도 필드 사용: 취소기한 D-day → `cancellation_deadline`, 충돌 배지 → `has_conflict`/`conflict_msg`.

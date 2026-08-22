@@ -92,12 +92,20 @@ async def parse_document(
 
 
 async def extract_information(
-    file_bytes: bytes, mime_type: str, schema_name: str, schema: dict
+    file_bytes: bytes, mime_type: str, schema_name: str, schema: dict,
+    system_instruction: str | None = None,
 ) -> dict[str, Any]:
-    """스키마 기반 필드 추출. 스키마 1레벨 프로퍼티는 string/integer/number/array만 허용."""
+    """스키마 기반 필드 추출. 스키마 1레벨 프로퍼티는 string/integer/number/array만 허용.
+
+    system_instruction: 추출 지침(선택) — system 메시지로 전달됨 (예: 날짜 포맷, 표기 규칙).
+    참고: Classify API는 메시지 1개 제한이라 이 방식이 불가 (카테고리 description으로만 지침 가능).
+    """
+    messages = _doc_message(file_bytes, mime_type)
+    if system_instruction:
+        messages = [{"role": "system", "content": system_instruction}] + messages
     payload = {
         "model": "information-extract",
-        "messages": _doc_message(file_bytes, mime_type),
+        "messages": messages,
         "response_format": {
             "type": "json_schema",
             "json_schema": {"name": schema_name, "schema": schema},
