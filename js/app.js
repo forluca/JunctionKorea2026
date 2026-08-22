@@ -144,15 +144,15 @@ const UIRenderer = {
             const textClass = item.hasConflict ? 'text-red-600' : 'text-blue-600';
             const conflictDiv = item.hasConflict ? `<div class="mt-2 text-[10px] text-red-600 bg-red-50 p-1.5 rounded truncate-text"><i class="fa-solid fa-triangle-exclamation"></i> ${item.conflictMsg}</div>` : '';
             const timelineItem = document.createElement('div');
-            timelineItem.className = 'relative flex items-center gap-3 cursor-pointer group z-10';
+            timelineItem.className = 'relative flex items-start gap-3 cursor-pointer group z-10';
             timelineItem.dataset.itemId = item.id;
             if (UIRenderer.selectedItemId === item.id) timelineItem.classList.add('timeline-item-selected');
             timelineItem.innerHTML = `
                 <div class="w-4 h-4 ${dotClass} rounded-full border-4 border-gray-50 z-10"></div>
-                <div class="flex-1 bg-white border ${borderClass} p-3 rounded-xl shadow-sm transition">
+                <div class="flex-1 min-w-0 bg-white border ${borderClass} p-3 rounded-xl shadow-sm transition">
                     <span class="${textClass} text-xs" style="font-weight: 700;">${item.time}</span>
-                    <h4 class="text-sm font-bold text-gray-900 mt-1 truncate-text">${item.title}</h4>
-                    <p class="text-[11px] text-gray-500 mt-0.5 truncate-text">${item.desc}</p>
+                    <h4 class="text-sm font-bold text-gray-900 mt-1 timeline-title">${item.title}</h4>
+                    <p class="text-[11px] text-gray-500 mt-0.5 timeline-desc">${item.desc}</p>
                     ${conflictDiv}
                 </div>
             `;
@@ -196,36 +196,87 @@ const UIRenderer = {
             return;
         }
 
+        // DB 스키마 기반 데이터 예외 처리 (Nullish Coalescing 및 논리합 활용)
+        const displayType = data.type || '미지정';
+        const displayTime = data.timeStr || data.starts_at || '일시 정보 없음';
+        const displayLocation = data.location || '...';
+        const displayBookingRef = data.booking_ref || '...';
+        const displayPrice = data.price ? UIRenderer.formatCurrency(data.price) : '...';
+        const displayCancelDead = data.cancellation_deadline || null;
+
         document.getElementById('item-header').innerHTML = `
             <div>
                 ${data.hasConflict ? '<span class="bg-red-100 text-red-700 text-[10px] px-2 py-1 rounded mb-2 inline-block" style="font-weight: 700;">Action Required</span>' : ''}
-                <h2 class="text-xl font-bold text-gray-900">${data.title}</h2><p class="text-xs text-gray-500 mt-1">${data.timeStr}</p>
+                <div class="text-xs text-blue-600 mb-1" style="font-weight: 700;">${displayType.toUpperCase()}</div>
+                <h2 class="text-xl font-bold text-gray-900">${data.title}</h2>
+                <p class="text-xs text-gray-500 mt-1">${displayTime}</p>
             </div>
             <button id="close-item-button" class="text-gray-400 hover:text-gray-700 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
         `;
         document.getElementById('close-item-button').addEventListener('click', (event) => UIRenderer.closeItem(event));
 
+        let validTickets = [];
+        if (Array.isArray(data.tickets) && data.tickets.length > 0) {
+            validTickets = data.tickets.filter(ticket => ticket.qrCodeStr || ticket.code);
+        } else if (data.qrCodeStr) {
+            validTickets = [{ id: `${data.id}-ticket`, qrCodeStr: data.qrCodeStr, label: '티켓 1' }];
+        }
+
         let html = '';
-        if (data.hasConflict) html += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl"><h4 class="text-sm text-red-800 mb-2" style="font-weight: 700;"><i class="fa-solid fa-triangle-exclamation"></i> 일정 충돌 발생</h4><p class="text-xs text-red-600 leading-relaxed">${data.conflictDetail}</p></div>`;
-        const tickets = data.tickets?.length ? data.tickets : [{ id: `${data.id}-ticket`, qrCodeStr: data.qrCodeStr, label: '티켓 1' }];
+        if (data.hasConflict) {
+            html += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl mb-4"><h4 class="text-sm text-red-800 mb-2" style="font-weight: 700;"><i class="fa-solid fa-triangle-exclamation"></i> 일정 충돌 발생</h4><p class="text-xs text-red-600 leading-relaxed">${data.conflictDetail || data.conflict_msg || '상세 내용 없음'}</p></div>`;
+        }
+
+        // 스키마에 존재하는 메타 정보(위치, 예약번호, 취소 기한)를 나열하는 신규 영역
         html += `
-            <div class="bg-white border border-gray-200 p-5 rounded-xl text-center shadow-sm">
+            <div class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm mb-4">
+                <dl class="space-y-3">
+                    <div class="flex justify-between">
+                        <dt class="text-xs text-gray-500">장소</dt>
+                        <dd class="text-xs font-medium text-gray-900">${displayLocation}</dd>
+                    </div>
+                    <div class="flex justify-between border-t border-gray-50 pt-3">
+                        <dt class="text-xs text-gray-500">예약 번호</dt>
+                        <dd class="text-xs font-medium text-gray-900">${displayBookingRef}</dd>
+                    </div>
+                    ${displayCancelDead ? `
+                    <div class="flex justify-between border-t border-gray-50 pt-3">
+                        <dt class="text-xs text-gray-500">무료 취소 기한</dt>
+                        <dd class="text-xs font-medium text-red-600">${displayCancelDead}</dd>
+                    </div>
+                    ` : ''}
+                </dl>
+            </div>
+        `;
+
+        html += `<div class="bg-white border border-gray-200 p-5 rounded-xl text-center shadow-sm">`;
+
+        if (validTickets.length > 0) {
+            html += `
                 <p class="text-xs text-gray-500 mb-3">입장용 QR 코드 (현장 제시)</p>
                 <div class="detail-ticket-slider" data-pass-id="${data.id}" data-ticket-index="0">
                     <button class="wallet-ticket-arrow wallet-ticket-prev" type="button" aria-label="이전 티켓"><i class="fa-solid fa-chevron-left"></i></button>
-                    <div class="wallet-ticket-view"><div class="wallet-qr"><i class="fa-solid fa-qrcode"></i></div><strong class="wallet-ticket-code">${tickets[0].qrCodeStr}</strong><small class="wallet-ticket-label">${tickets[0].label || '티켓 1'}</small></div>
+                    <div class="wallet-ticket-view"><div class="wallet-qr"><i class="fa-solid fa-qrcode"></i></div><strong class="wallet-ticket-code">${validTickets[0].qrCodeStr || validTickets[0].code || ''}</strong><small class="wallet-ticket-label">${validTickets[0].label || '티켓 1'}</small></div>
                     <button class="wallet-ticket-arrow wallet-ticket-next" type="button" aria-label="다음 티켓"><i class="fa-solid fa-chevron-right"></i></button>
-                    <div class="wallet-ticket-dots">${tickets.map((ticket, index) => `<button type="button" class="wallet-ticket-dot${index === 0 ? ' is-active' : ''}" data-ticket-index="${index}" aria-label="${ticket.label || `티켓 ${index + 1}`} "></button>`).join('')}</div>
+                    <div class="wallet-ticket-dots">${validTickets.map((ticket, index) => `<button type="button" class="wallet-ticket-dot${index === 0 ? ' is-active' : ''}" data-ticket-index="${index}" aria-label="${ticket.label || `티켓 ${index + 1}`} "></button>`).join('')}</div>
                 </div>
+            `;
+        }
+
+        html += `
                 <div class="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-                    <span class="text-xs text-gray-600">결제 금액: ${UIRenderer.formatCurrency(data.price)}</span>
+                    <span class="text-xs text-gray-600">결제 금액: ${displayPrice}</span>
                     <button class="text-blue-600 text-xs hover:underline" style="font-weight: 700;">원본 문서 보기</button>
                 </div>
             </div>
         `;
         content.innerHTML = html;
-        const ticketSlider = content.querySelector('.detail-ticket-slider');
-        if (ticketSlider) TicketSlider.bind(ticketSlider, { tickets: tickets });
+
+        if (validTickets.length > 0) {
+            const ticketSlider = content.querySelector('.detail-ticket-slider');
+            if (ticketSlider) TicketSlider.bind(ticketSlider, { tickets: validTickets });
+        }
+        
         UIRenderer.setAppClass('state-item');
         window.setTimeout(() => itemPanel.classList.remove('is-loading'), 300);
     },

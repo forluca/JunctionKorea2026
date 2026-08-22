@@ -1,6 +1,39 @@
 const WalletController = {
     escapeHtml: (value = '') => String(value).replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]),
 
+    normalizeTickets: (item, detail) => {
+        const source = Array.isArray(detail?.tickets) && detail.tickets.length
+            ? detail.tickets
+            : (Array.isArray(item?.tickets) ? item.tickets : []);
+        const normalized = source
+            .map((ticket, index) => ({
+                id: ticket?.id || `${item.id}-ticket-${index + 1}`,
+                code: ticket?.code || ticket?.qrCodeStr || detail?.qrCodeStr || item?.qrCodeStr || '',
+                label: ticket?.label || `티켓 ${index + 1}`
+            }))
+            .filter(ticket => ticket.code);
+
+        if (normalized.length > 0) return normalized;
+        const fallbackCode = detail?.qrCodeStr || item?.qrCodeStr || '';
+        return fallbackCode ? [{ id: `${item.id}-ticket-1`, code: fallbackCode, label: '티켓 1' }] : [];
+    },
+
+    buildPassFromItem: async (item) => {
+        const detail = await DocketAPI.fetchItemDetail(item.id);
+        const tickets = WalletController.normalizeTickets(item, detail || {});
+        if (!tickets.length) return null;
+
+        return {
+            id: item.id,
+            title: detail?.title || item.title,
+            date: item.date || item.time,
+            time: item.time || '',
+            location: item.location || item.desc || '',
+            type: item.type,
+            tickets
+        };
+    },
+
     renderPass: (pass) => `
         <article class="wallet-pass" data-pass-id="${WalletController.escapeHtml(pass.id)}" data-ticket-index="0">
             <div class="wallet-pass-main">
@@ -36,16 +69,8 @@ const WalletController = {
         const trips = await DocketAPI.fetchTrips();
         const tripsWithPasses = await Promise.all(trips.map(async trip => {
             const items = await DocketAPI.fetchTripDetails(trip.id);
-            const passes = items.filter(item => item.tripId === trip.id && (item.qrCodeStr || item.tickets?.some(ticket => ticket.qrCodeStr))).map(item => ({
-                id: item.id,
-                title: item.title,
-                date: item.date || item.time,
-                time: item.time,
-                location: item.location || item.desc,
-                code: item.qrCodeStr,
-                type: item.type,
-                tickets: item.tickets?.length ? item.tickets : [{ id: `${item.id}-ticket`, qrCodeStr: item.qrCodeStr, label: '티켓 1' }]
-            }));
+            const passCandidates = await Promise.all(items.map(item => WalletController.buildPassFromItem(item)));
+            const passes = passCandidates.filter(Boolean);
             return { ...trip, passes };
         }));
         content.innerHTML = tripsWithPasses.map(WalletController.renderTrip).join('');
