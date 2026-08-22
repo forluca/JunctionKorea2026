@@ -374,4 +374,24 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('clear-files-button').addEventListener('click', UploadController.clearFiles);
     document.getElementById('btn-parse').addEventListener('click', UploadController.startParsing);
     document.getElementById('lnb-signout-button').addEventListener('click', GoogleAuth.signOut);
+    document.getElementById('user-info-button').addEventListener('click', () => {
+        const user = GoogleAuth.getStoredUser();
+        if (!user) return;
+        const displayName = user.name || user.email || 'Google 사용자';
+        const email = user.email || '이메일 정보 없음';
+        document.getElementById('user-modal-content').innerHTML = `
+            <div class="user-profile-summary">
+                <div class="user-profile-avatar">${displayName.charAt(0).toUpperCase()}</div>
+                <div><h2>${displayName}</h2><p>${email}</p></div>
+            </div>
+            <dl class="user-detail-list">
+                <div><dt>로그인 방식</dt><dd>Google 계정</dd></div>
+                <div><dt>서비스 이용 상태</dt><dd class="user-status">이용 중</dd></div>
+            </dl>
+        `;
+        document.getElementById('user-info-modal').classList.remove('hidden');
+    });
+    document.getElementById('close-user-modal-button').addEventListener('click', () => {
+        document.getElementById('user-info-modal').classList.add('hidden');
+    });
 });

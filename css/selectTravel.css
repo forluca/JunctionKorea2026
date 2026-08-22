@@ -29,6 +29,8 @@
 .user-background-frame { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
 .user-shell { position: fixed; inset: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px 20px; background: rgba(15,23,42,.68); }
 .user-card { position: relative; z-index: 1; width: min(100%, 560px); padding: 36px; border: 1px solid #e2e8f0; border-radius: 18px; background: #ffffff; box-shadow: 0 24px 80px rgba(0,0,0,.3); }
+.user-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 32px 20px; background: rgba(15,23,42,.68); }
+.user-modal-card { width: min(100%, 560px); padding: 36px; border: 1px solid #e2e8f0; border-radius: 18px; background: #ffffff; box-shadow: 0 24px 80px rgba(0,0,0,.3); }
 .user-page-heading { display: flex; align-items: center; gap: 16px; padding-bottom: 26px; border-bottom: 1px solid #e5e7eb; }
 .user-back-button { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: #1e3a8a; background: #eff6ff; font-size: 20px; text-decoration: none; }
 .user-back-button:hover { background: #dbeafe; }
@@ -47,6 +49,7 @@
 .user-signout-button { width: 100%; padding: 12px; border: 1px solid #fecaca; border-radius: 8px; background: #fff1f2; color: #dc2626; font-size: 13px; font-weight: 700; cursor: pointer; }
 .user-signout-button:hover { background: #fee2e2; }
 @media (max-width: 480px) { .user-card { padding: 24px; } }
+@media (max-width: 480px) { .user-modal-card { padding: 24px; } }
 
 /* 패널이 전환될 때 너비와 투명도가 자연스럽게 바뀝니다. */
 #trip-panel { transition: width 0.3s ease-in-out; }

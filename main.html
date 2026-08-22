@@ -29,9 +29,9 @@
             </button>
         </div>
         <div class="mt-auto flex w-full flex-col gap-2">
-            <a href="user.html" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="사용자 정보">
+            <button id="user-info-button" type="button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="사용자 정보">
                 <i class="fa-solid fa-user text-xl"></i><span class="text-[11px] font-medium tracking-wide">내 정보</span>
-            </a>
+            </button>
             <button id="lnb-signout-button" type="button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="로그아웃">
                 <i class="fa-solid fa-right-from-bracket text-xl"></i><span class="text-[11px] font-medium tracking-wide">로그아웃</span>
             </button>
@@ -133,6 +133,19 @@
             </div>
         </div>
     </main>
+
+    <div id="user-info-modal" class="user-modal hidden" role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
+        <section class="user-modal-card">
+            <div class="user-page-heading">
+                <button id="close-user-modal-button" class="user-back-button" type="button" aria-label="사용자 정보 닫기">&times;</button>
+                <div>
+                    <p class="login-eyebrow">ACCOUNT</p>
+                    <h1 id="user-modal-title">사용자 정보</h1>
+                </div>
+            </div>
+            <div id="user-modal-content" class="user-profile-content"></div>
+        </section>
+    </div>
 
     <script src="js/config.local.js"></script>
     <script src="js/google-auth.js"></script>
