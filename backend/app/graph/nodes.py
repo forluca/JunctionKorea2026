@@ -88,6 +88,52 @@ async def decode_codes(state: DocState) -> dict:
     return {"qr_codes": qr_codes, "qr_images": qr_images}
 
 
+def _join_date_time(d, t) -> str:
+    """날짜(YYYY-MM-DD)와 시각(HH:MM)을 ISO로 결합. 시각 없으면 날짜만, 날짜 없으면 빈 문자열."""
+    d = str(d or "").strip()[:10]
+    t = str(t or "").strip()[:5]
+    if not d:
+        return ""
+    if re.fullmatch(r"\d{2}:\d{2}", t):
+        return f"{d}T{t}:00"
+    return d
+
+
+def _item_from_extracted(doc_type: str, ex: dict) -> dict:
+    """최종 Instruct 스텝이 실패했을 때 Extract 필드로 item을 결정적으로 조립 (폴백)."""
+    title, starts, ends, location = "", "", "", ""
+    if doc_type == "hotel":
+        name = str(ex.get("hotel_name") or "").strip()
+        title = f"{name} 체크인" if name else ""
+        starts = _join_date_time(ex.get("check_in_date"), ex.get("check_in_time"))
+        ends = _join_date_time(ex.get("check_out_date"), ex.get("check_out_time"))
+        location = ex.get("address") or ""
+    elif doc_type == "transportation":
+        num = str(ex.get("service_number") or "").strip()
+        dep = str(ex.get("departure_location") or "").strip()
+        arr = str(ex.get("arrival_location") or "").strip()
+        title = " ".join(p for p in [num, f"{dep}→{arr}" if dep and arr else ""] if p)
+        starts = str(ex.get("departure_datetime") or "").strip()
+        ends = str(ex.get("arrival_datetime") or "").strip()
+        location = dep
+    elif doc_type == "tour":
+        title = str(ex.get("tour_name") or "").strip()
+        starts = str(ex.get("start_datetime") or "").strip()
+        location = str(ex.get("meeting_point") or "").strip()
+    else:
+        title = str(ex.get("title") or "").strip()
+        starts = str(ex.get("date") or "").strip()
+        location = str(ex.get("location") or "").strip()
+    return {"title": title, "starts_at": starts, "ends_at": ends, "location": location}
+
+
+def _notes_from_extracted(ex: dict) -> list[str]:
+    """Extract의 notes 문자열(;로 이어진 잔글씨)을 문장 목록으로 분리 (폴백)."""
+    raw = str(ex.get("notes") or "")
+    parts = [p.strip() for p in re.split(r"[;\n]", raw) if p.strip()]
+    return parts[:12]
+
+
 def _items_from_schedule(extracted: dict, base: date) -> list[dict]:
     """Extract 스텝의 schedule_items로 일정을 결정적으로 생성 (최종 스텝 폴백용).
 
@@ -213,17 +259,21 @@ async def studio_agent(state: DocState) -> dict:
     doc_type = raw_doc_type if raw_doc_type in CATEGORY_NAMES else "other"
 
     # ── 최종 스텝 정규화 (키 흔들림 방어: normalized_item/itinerary_item/item, type/tool) ──
+    # 최종 스텝이 비거나 필드가 빠지면 Extract 필드로 코드가 조립한 값으로 폴백
     item = (final.get("normalized_item") or final.get("itinerary_item")
             or final.get("item") or {})
+    fb = _item_from_extracted(doc_type, extracted)
     item_fields = {
-        "title": item.get("title") or f"{doc_type} 일정",
+        "title": item.get("title") or fb["title"] or f"{doc_type} 일정",
         "trip_title": final.get("trip_title") or item.get("trip_title") or "",
-        "starts_at": item.get("starts_at") or "",
-        "ends_at": item.get("ends_at") or "",
-        "location": item.get("location") or "",
+        "starts_at": item.get("starts_at") or fb["starts_at"],
+        "ends_at": item.get("ends_at") or fb["ends_at"],
+        "location": item.get("location") or fb["location"],
         "summary": item.get("summary") or "",
     }
     notes = [str(n) for n in (final.get("notes") or []) if n]
+    if not notes:
+        notes = _notes_from_extracted(extracted)
 
     planned: list[dict] = []
     for a in final.get("actions") or []:
