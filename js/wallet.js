@@ -2,7 +2,7 @@ const WalletController = {
     escapeHtml: (value = '') => String(value).replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]),
 
     renderPass: (pass) => `
-        <article class="wallet-pass">
+        <article class="wallet-pass" data-pass-id="${WalletController.escapeHtml(pass.id)}" data-ticket-index="0">
             <div class="wallet-pass-main">
                 <div class="wallet-pass-type"><i class="fa-solid fa-ticket"></i> ${WalletController.escapeHtml(pass.type || '예약 패스')}</div>
                 <h3>${WalletController.escapeHtml(pass.title)}</h3>
@@ -11,8 +11,10 @@ const WalletController = {
             </div>
             <div class="wallet-pass-divider"><span></span><span></span></div>
             <div class="wallet-pass-code">
-                <div class="wallet-qr"><i class="fa-solid fa-qrcode"></i></div>
-                <strong>${WalletController.escapeHtml(pass.code)}</strong>
+                <button class="wallet-ticket-arrow wallet-ticket-prev" type="button" aria-label="이전 티켓"><i class="fa-solid fa-chevron-left"></i></button>
+                <div class="wallet-ticket-view"><div class="wallet-qr"><i class="fa-solid fa-qrcode"></i></div><strong class="wallet-ticket-code">${WalletController.escapeHtml(pass.tickets[0].code)}</strong><small class="wallet-ticket-label">${WalletController.escapeHtml(pass.tickets[0].label || '티켓 1')}</small></div>
+                <button class="wallet-ticket-arrow wallet-ticket-next" type="button" aria-label="다음 티켓"><i class="fa-solid fa-chevron-right"></i></button>
+                <div class="wallet-ticket-dots">${pass.tickets.map((ticket, index) => `<button type="button" class="wallet-ticket-dot${index === 0 ? ' is-active' : ''}" data-ticket-index="${index}" aria-label="${WalletController.escapeHtml(ticket.label || `티켓 ${index + 1}`)}"></button>`).join('')}</div>
                 <small>현장에서 제시하세요</small>
             </div>
         </article>
@@ -34,17 +36,25 @@ const WalletController = {
         const trips = await DocketAPI.fetchTrips();
         const tripsWithPasses = await Promise.all(trips.map(async trip => {
             const items = await DocketAPI.fetchTripDetails(trip.id);
-            const passes = items.filter(item => item.tripId === trip.id && item.qrCodeStr).map(item => ({
+            const passes = items.filter(item => item.tripId === trip.id && (item.qrCodeStr || item.tickets?.some(ticket => ticket.qrCodeStr))).map(item => ({
+                id: item.id,
                 title: item.title,
                 date: item.date || item.time,
                 time: item.time,
                 location: item.location || item.desc,
                 code: item.qrCodeStr,
-                type: item.type
+                type: item.type,
+                tickets: item.tickets?.length ? item.tickets : [{ id: `${item.id}-ticket`, qrCodeStr: item.qrCodeStr, label: '티켓 1' }]
             }));
             return { ...trip, passes };
         }));
         content.innerHTML = tripsWithPasses.map(WalletController.renderTrip).join('');
+        content.querySelectorAll('.wallet-pass').forEach(passElement => WalletController.bindTicketSlider(passElement, tripsWithPasses));
+    },
+
+    bindTicketSlider: (passElement, trips) => {
+        const pass = trips.flatMap(trip => trip.passes).find(item => item.id === passElement.dataset.passId);
+        if (pass) TicketSlider.bind(passElement, pass);
     },
 
     init: async () => {

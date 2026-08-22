@@ -46,8 +46,9 @@ JunctionKorea2026/
 - `GET /api/trips/:tripId/items`
 - 프론트 함수: `DocketAPI.fetchTripDetails(tripId)`
 - 사용 위치: `UIRenderer.openTimeline(tripId, tripTitle)`
-- 응답 필드: `id`, `tripId`, `type`, `time`, `title`, `desc`, `price`, `hasConflict`, `conflictMsg`, `qrCodeStr`, `location`
-- `qrCodeStr`가 있으면 통합 지갑에 예약 패스로 표시합니다.
+- 응답 필드: `id`, `tripId`, `type`, `time`, `title`, `desc`, `price`, `hasConflict`, `conflictMsg`, `qrCodeStr`, `tickets`, `location`
+- `qrCodeStr` 또는 `tickets[].qrCodeStr`가 있으면 통합 지갑에 예약 패스로 표시합니다.
+- 여러 티켓은 `tickets: [{ id, qrCodeStr, label }]` 형태로 전달하며 지갑에서 좌우 슬라이드로 전환합니다.
 
 여행 목록은 로그인한 사용자의 Google subject ID를 기준으로 조회합니다.
 

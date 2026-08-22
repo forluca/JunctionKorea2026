@@ -207,11 +207,16 @@ const UIRenderer = {
 
         let html = '';
         if (data.hasConflict) html += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl"><h4 class="text-sm text-red-800 mb-2" style="font-weight: 700;"><i class="fa-solid fa-triangle-exclamation"></i> 일정 충돌 발생</h4><p class="text-xs text-red-600 leading-relaxed">${data.conflictDetail}</p></div>`;
+        const tickets = data.tickets?.length ? data.tickets : [{ id: `${data.id}-ticket`, qrCodeStr: data.qrCodeStr, label: '티켓 1' }];
         html += `
             <div class="bg-white border border-gray-200 p-5 rounded-xl text-center shadow-sm">
                 <p class="text-xs text-gray-500 mb-3">입장용 QR 코드 (현장 제시)</p>
-                <div class="w-32 h-32 bg-gray-200 mx-auto rounded-lg mb-3 flex items-center justify-center"><i class="fa-solid fa-qrcode text-5xl text-gray-400"></i></div>
-                <p class="text-[11px] text-gray-400">예약 번호: ${data.qrCodeStr}</p>
+                <div class="detail-ticket-slider" data-pass-id="${data.id}" data-ticket-index="0">
+                    <button class="wallet-ticket-arrow wallet-ticket-prev" type="button" aria-label="이전 티켓"><i class="fa-solid fa-chevron-left"></i></button>
+                    <div class="wallet-ticket-view"><div class="wallet-qr"><i class="fa-solid fa-qrcode"></i></div><strong class="wallet-ticket-code">${tickets[0].qrCodeStr}</strong><small class="wallet-ticket-label">${tickets[0].label || '티켓 1'}</small></div>
+                    <button class="wallet-ticket-arrow wallet-ticket-next" type="button" aria-label="다음 티켓"><i class="fa-solid fa-chevron-right"></i></button>
+                    <div class="wallet-ticket-dots">${tickets.map((ticket, index) => `<button type="button" class="wallet-ticket-dot${index === 0 ? ' is-active' : ''}" data-ticket-index="${index}" aria-label="${ticket.label || `티켓 ${index + 1}`} "></button>`).join('')}</div>
+                </div>
                 <div class="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
                     <span class="text-xs text-gray-600">결제 금액: ${UIRenderer.formatCurrency(data.price)}</span>
                     <button class="text-blue-600 text-xs hover:underline" style="font-weight: 700;">원본 문서 보기</button>
@@ -219,6 +224,8 @@ const UIRenderer = {
             </div>
         `;
         content.innerHTML = html;
+        const ticketSlider = content.querySelector('.detail-ticket-slider');
+        if (ticketSlider) TicketSlider.bind(ticketSlider, { tickets: tickets });
         UIRenderer.setAppClass('state-item');
         window.setTimeout(() => itemPanel.classList.remove('is-loading'), 300);
     },
