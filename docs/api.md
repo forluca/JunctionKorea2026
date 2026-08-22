@@ -159,7 +159,8 @@ curl -X POST http://127.0.0.1:8000/api/documents/parse \
 ]
 ```
 
-- `start_date`/`end_date`는 소속 일정들의 최소/최대 날짜로 자동 계산됨. 일정이 없으면 `null`.
+- `start_date`/`end_date`는 소속 일정들의 범위로 자동 갱신되며 **단조 확장** — 기간 밖 일정이 추가되면 그 일정까지 포함하도록 넓어지고, 절대 줄어들지 않음. 일정이 없으면 `null`.
+- **교통편(transportation/flight/train 등)은 출발 날짜만 기간 계산에 반영** — 귀국편이 밤에 출발해 다음날 도착해도 도착일이 여행 종료일을 늘리지 않음 (호텔 체크아웃 등 다른 유형의 종료일은 정상 반영).
 - `status`: 조회 시점에 계산됨 — `end_date`가 오늘보다 이전이면 `"past"`, 여행 전/여행 중/종료일 당일이면 `"active"` (일정 없는 여행도 `active`). 2종뿐.
 - `conflict_count` = 해당 여행에서 `has_conflict=true`인 일정 수.
 - 정렬: 생성일 내림차순.

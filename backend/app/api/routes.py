@@ -32,6 +32,9 @@ _ALLOWED_MIME = {
 _ALLOWED_EXT = {".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff",
                 ".heic", ".heif", ".docx", ".pptx", ".xlsx", ".hwp", ".hwpx"}
 
+# 여행 기간 계산에서 도착 시각을 제외할 교통편 유형들 (schedule 유형 + itinerary category)
+_TRANSPORT_TYPES = {"transportation", "transport", "flight", "train", "bus", "ferry"}
+
 
 @router.post("/documents/parse")
 async def parse_document(
@@ -335,11 +338,34 @@ def _time_range(start: str | None, end: str | None) -> str:
 
 
 def _update_trip_range(trip_id: str) -> None:
+    """여행 기간을 일정 범위에 맞춰 갱신 — 단조 확장(늘어나기만 하고 줄어들지 않음).
+
+    범위 밖 일정이 추가되면 그 일정까지 포함하도록 넓히고,
+    기존 기간보다 좁아지는 방향으로는 절대 갱신하지 않는다.
+    """
     db = get_db()
-    rows = db.table("items").select("starts_at,ends_at").eq("trip_id", trip_id).execute().data or []
-    dates = [d for r in rows for d in (_dt(r.get("starts_at")), _dt(r.get("ends_at"))) if d]
+    rows = db.table("items").select("type,starts_at,ends_at").eq("trip_id", trip_id).execute().data or []
+    dates = []
+    for r in rows:
+        s = _dt(r.get("starts_at"))
+        if s:
+            dates.append(s)
+        # 교통편은 출발 날짜만 반영 — 귀국편 도착일(다음날 새벽 등)이
+        # 여행 종료일을 늘리지 않도록 도착 시각(ends_at)은 제외
+        if (r.get("type") or "").lower() not in _TRANSPORT_TYPES:
+            e = _dt(r.get("ends_at"))
+            if e:
+                dates.append(e)
     if not dates:
         return
-    db.table("trips").update(
-        {"start_date": min(dates).date().isoformat(), "end_date": max(dates).date().isoformat()}
-    ).eq("id", trip_id).execute()
+    new_start = min(dates).date().isoformat()
+    new_end = max(dates).date().isoformat()
+
+    trip = db.table("trips").select("start_date,end_date").eq("id", trip_id).single().execute().data or {}
+    cur_start, cur_end = trip.get("start_date"), trip.get("end_date")
+    # 기존 기간이 있으면 더 넓은 쪽만 채택
+    start = min(new_start, cur_start) if cur_start else new_start
+    end = max(new_end, cur_end) if cur_end else new_end
+    if start == cur_start and end == cur_end:
+        return
+    db.table("trips").update({"start_date": start, "end_date": end}).eq("id", trip_id).execute()
