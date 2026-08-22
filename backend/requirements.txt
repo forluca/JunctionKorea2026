@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+httpx
+langgraph
+python-dotenv
+supabase
+google-api-python-client==2.199.0
+google-auth==2.56.3
+google-auth-oauthlib==1.4.0
+opencv-python-headless
+zxing-cpp

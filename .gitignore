@@ -1,2 +1,28 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
 # Local secrets and environment-specific configuration
 js/config.local.js
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Google OAuth credentials
+credentials.json
+token.json
