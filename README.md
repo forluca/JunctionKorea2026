@@ -41,12 +41,12 @@ JunctionKorea2026/
 │  │  └─ tools/registry.py   # 액션 툴 레지스트리 (캘린더/알림/비용 스텁)
 │  ├─ backoffice/
 │  │  └─ main.py             # 백오피스 서버 (포트 8001) — Upstage 실험 + DB 브라우저
+│  ├─ dataset/               # 테스트용 실제 여행 문서 PDF (호텔 / 교통 / 입장권)
 │  ├─ supabase_schema.sql    # Supabase 테이블 생성 SQL
 │  ├─ requirements.txt
 │  └─ .env.example
 ├─ docs/
-│  ├─ api.md                 # 백엔드 API 명세 (프론트 연동 기준 문서)
-│  └─ submission.md          # 제출용 Punchline / Description 원문
+│  └─ api.md                 # 백엔드 API 명세 (프론트 연동 기준 문서)
 ├─ .gitignore
 └─ README.md
 ```
@@ -62,6 +62,18 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # 최초 1�
 
 사전 준비: 리포 루트 `.env`에 `UPSTAGE_API`, `SUPABASE_API`, `SUPABASE_URL` 설정 후,
 `backend/supabase_schema.sql`을 Supabase SQL Editor에서 실행.
+
+### 팀원과 공유 (외부 접속)
+
+```bash
+# 같은 와이파이에서 접속 가능하게: --host 0.0.0.0 추가 → http://<내 LAN IP>:8001
+.venv/bin/uvicorn backoffice.main:app --host 0.0.0.0 --port 8001
+
+# 어떤 네트워크에서든 접속 가능한 공개 URL 발급 (trycloudflare.com)
+cloudflared tunnel --url http://localhost:8001
+```
+
+공개 URL은 링크만 알면 누구나 Upstage API를 호출(크레딧 소모)할 수 있으니 테스트 시간에만 열어둘 것.
 
 ## API 구현 대상
 
@@ -97,7 +109,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # 최초 1�
 - 분석 시작 함수: `UploadController.startParsing()`
 - 요청 형식: `multipart/form-data`
 - 요청 필드: `document`, `targetType`, `tripId`, `text`
-- `targetType`: `trip`이면 새 여행 생성, `schedule`이면 기존 여행에 일정 생성
+- `targetType`: `schedule` — 바우처·티켓 1건 업로드(기존 여행에 일정 1개 생성, 구현 완료) / `trip` — 전체 여행 계획 문서 업로드(새 여행 생성, 처리 플로우는 미구현·자리만 잡힘). 요청의 targetType으로 명시적 분기
 - 응답 데이터: 문서 유형, 추출된 여행·일정 정보, 충돌 후보, 원본 문서 식별자
 - 저장 결과: 분석 결과를 기준으로 여행 또는 일정 생성
 

@@ -22,8 +22,9 @@ create table if not exists items (
   currency text,
   booking_ref text,
   qr_code text,
+  qr_images jsonb,
   cancellation_deadline timestamptz,
-  notes text,
+  notes jsonb,          -- 사용자가 알아둬야 할 사항 문장 배열 (판단+주의사항 통합)
   has_conflict boolean not null default false,
   conflict_msg text,
   created_at timestamptz not null default now()

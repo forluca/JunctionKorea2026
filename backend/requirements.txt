@@ -5,3 +5,5 @@ httpx
 langgraph
 python-dotenv
 supabase
+opencv-python-headless
+zxing-cpp

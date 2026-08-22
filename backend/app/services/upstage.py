@@ -74,7 +74,12 @@ async def parse_document(
             f"{config.UPSTAGE_BASE_URL}/document-digitization",
             headers=_HEADERS,
             files={"document": (filename, file_bytes, mime_type)},
-            data={"model": "document-parse", "output_formats": '["html", "text"]'},
+            data={
+                "model": "document-parse",
+                "output_formats": '["html", "text"]',
+                # figure 크롭을 base64로 받아 QR/바코드 디코딩에 사용
+                "base64_encoding": '["figure"]',
+            },
         )
         r.raise_for_status()
     body = r.json()
