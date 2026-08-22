@@ -22,3 +22,7 @@ build/
 .DS_Store
 .idea/
 .vscode/
+
+# Google OAuth credentials
+credentials.json
+token.json
