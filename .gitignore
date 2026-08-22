@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Local secrets and environment-specific configuration
+js/config.local.js
+
 # Python
 __pycache__/
 *.pyc
