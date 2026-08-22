@@ -15,8 +15,16 @@ const MapController = {
     markers: [], // 마커 객체 배열
     polylines: [], // 교통편 폴리라인 배열
     geocoder: null,
+    infoWindow: null, // 싱글턴 InfoWindow (한 번에 하나만 열림)
 
-    getMapStyles: (theme = document.documentElement.dataset.theme) => theme === 'dark' ? DARK_MAP_STYLES : [],
+    // 구글맵 기본 POI(상점·명소)와 대중교통 아이콘 숨김 — 우리 일정 핀만 보이게
+    POI_HIDE_STYLES: [
+        { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+        { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+    ],
+
+    getMapStyles: (theme = document.documentElement.dataset.theme) =>
+        [...MapController.POI_HIDE_STYLES, ...(theme === 'dark' ? DARK_MAP_STYLES : [])],
 
     showFallback: (message) => {
         document.getElementById('map').classList.add('hidden');
@@ -51,6 +59,8 @@ const MapController = {
             });
             document.getElementById('map').classList.remove('hidden');
             document.getElementById('map-fallback').classList.add('hidden');
+            // 첫 진입 시 사용자 현재 위치로 이동
+            MapController.goToUserLocation();
         };
 
         const script = document.createElement('script');
@@ -60,10 +70,65 @@ const MapController = {
         document.head.appendChild(script);
     },
 
+    // 문서 썸네일 URL (백엔드가 PDF 첫 페이지를 PNG로 렌더링)
+    getThumbUrl: (item) => {
+        if (!item?.document_id || typeof API_BASE_URL === 'undefined') return null;
+        return `${API_BASE_URL}/api/documents/${item.document_id}/thumbnail`;
+    },
+
+    // 핀 위에 항상 떠 있는 문서 썸네일 말풍선 (애플 사진 지도 스타일)
+    createDocThumbOverlay: (position, imgUrl, onClick) => {
+        class DocThumbOverlay extends google.maps.OverlayView {
+            onAdd() {
+                const div = document.createElement('div');
+                div.className = 'doc-thumb-overlay';
+                div.innerHTML = `<img src="${imgUrl}" alt="문서">`;
+                div.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+                div.querySelector('img').addEventListener('error', () => div.remove());
+                this.div = div;
+                this.getPanes().overlayMouseTarget.appendChild(div);
+            }
+            draw() {
+                if (!this.div) return;
+                const p = this.getProjection().fromLatLngToDivPixel(position);
+                if (p) { this.div.style.left = `${p.x}px`; this.div.style.top = `${p.y}px`; }
+            }
+            onRemove() { this.div?.remove(); this.div = null; }
+        }
+        const overlay = new DocThumbOverlay();
+        overlay.setMap(MapController.map);
+        return overlay;
+    },
+
+    // 일정 정보 말풍선(InfoWindow) — 싱글턴으로 하나만 유지, 텍스트 위에 문서 썸네일
+    showInfoWindow: (markerObj) => {
+        if (!MapController.map || !markerObj?.marker || !markerObj.item) return;
+        if (!MapController.infoWindow) {
+            MapController.infoWindow = new google.maps.InfoWindow();
+        }
+        const item = markerObj.item;
+        const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const timeStr = (typeof UIRenderer !== 'undefined' && UIRenderer.formatDateTime)
+            ? UIRenderer.formatDateTime(item.starts_at) : (item.starts_at || '');
+        const thumbUrl = MapController.getThumbUrl(item);
+        MapController.infoWindow.setContent(`
+            <div class="map-info-wrap">
+                ${thumbUrl ? `<img class="map-info-thumb" src="${thumbUrl}" alt="원본 문서" onerror="this.remove()">` : ''}
+                <div class="map-info-card">
+                    ${timeStr ? `<div class="map-info-time">${esc(timeStr)}</div>` : ''}
+                    <div class="map-info-title">${esc(item.title || '')}</div>
+                    ${item.location ? `<div class="map-info-location">${esc(item.location)}</div>` : ''}
+                </div>
+            </div>`);
+        MapController.infoWindow.open({ map: MapController.map, anchor: markerObj.marker });
+    },
+
     // 타임라인 닫을 때 호출될 마커 및 폴리라인 완전 삭제 메서드
     clearMarkers: () => {
+        if (MapController.infoWindow) MapController.infoWindow.close();
         MapController.markers.forEach(obj => {
             if (obj.marker) obj.marker.setMap(null);
+            if (obj.overlay) obj.overlay.setMap(null);
         });
         MapController.markers = [];
 
@@ -91,37 +156,30 @@ const MapController = {
                     if (status === 'OK' && results[0]) {
                         const position = results[0].geometry.location;
                         
-                        // 호텔일 경우 특수 아이콘 지정 (Google 기본 숙박/호텔 아이콘 또는 마커 색상 변경)
-                        let iconConfig = undefined;
-                        if (rawType === 'hotel') {
-                            iconConfig = {
-                                url: 'https://maps.google.com/mapfiles/ms/icons/lodging.png', // Google Maps 공식 제공 호텔/숙박 시설 마커 아이콘
-                                scaledSize: new google.maps.Size(32, 32) // 아이콘 크기 조절
-                            };
-                        } else if (rawType === 'transportation') {
-                            iconConfig = {
-                                url: 'https://maps.google.com/mapfiles/ms/icons/bus.png',
-                                scaledSize: new google.maps.Size(32, 32)
-                            };
-                        }
-
                         const marker = new google.maps.Marker({
                             map: MapController.map,
                             position: position,
                             title: item.title,
-                            icon: iconConfig // 설정된 아이콘 객체 적용
+                            icon: MapController.getPinIcon(item) // 파랑/충돌 시 빨강 표준 핀
                         });
 
-                        const uniqueNodeId = rawType === 'hotel' ? `${item.id}-in` : `${item.id}-in`;
-                        marker.addListener('click', () => {
-                            MapController.map.panTo(position);
-                            setTimeout(() => MapController.map.setZoom(13), 50);
+                        const uniqueNodeId = `${item.id}-in`;
+                        const openThisItem = () => {
+                            // openItem → focusMarker가 카메라 이동 + InfoWindow까지 처리
                             if (typeof UIRenderer !== 'undefined' && UIRenderer.openItem) {
                                 UIRenderer.openItem(item.id, uniqueNodeId);
                             }
-                        });
+                        };
+                        marker.addListener('click', openThisItem);
 
-                        MapController.markers.push({ itemId: item.id, marker: marker });
+                        // 핀 위 상시 문서 썸네일 말풍선 (클릭 시 핀과 동일 동작)
+                        let thumbOverlay = null;
+                        const thumbUrl = MapController.getThumbUrl(item);
+                        if (thumbUrl) {
+                            thumbOverlay = MapController.createDocThumbOverlay(position, thumbUrl, openThisItem);
+                        }
+
+                        MapController.markers.push({ itemId: item.id, marker: marker, item: item, overlay: thumbOverlay });
                         bounds.extend(position);
                         validLocationCount++;
 
@@ -136,9 +194,10 @@ const MapController = {
                                         const arrMarker = new google.maps.Marker({
                                             map: MapController.map,
                                             position: arrPosition,
-                                            title: `${item.title} (도착)`
+                                            title: `${item.title} (도착)`,
+                                            icon: MapController.getPinIcon(item)
                                         });
-                                        MapController.markers.push({ itemId: item.id, marker: arrMarker });
+                                        MapController.markers.push({ itemId: item.id, marker: arrMarker, item: item });
                                         bounds.extend(arrPosition);
 
                                         const flightPath = new google.maps.Polyline({
@@ -161,11 +220,98 @@ const MapController = {
         }
 
         if (validLocationCount > 0) {
-            MapController.map.fitBounds(bounds, { top: 100, right: 100, bottom: 100, left: 100 });
+            // 좌측 플로팅 패널이 지도를 덮는 만큼 왼쪽 패딩을 늘려 가시 영역 기준으로 맞춤
+            const leftPad = MapController.getCoveredLeftWidth() + 60;
+            MapController.map.fitBounds(bounds, { top: 100, right: 100, bottom: 100, left: leftPad });
             google.maps.event.addListenerOnce(MapController.map, 'bounds_changed', () => {
                 if (MapController.map.getZoom() > 13) MapController.map.setZoom(13);
             });
         }
+    },
+
+    // 핀: 구글 기본 스타일(풍선 + 안쪽 진한 원). 일반 파랑(blue-500) / 충돌 빨강(red-500)
+    getPinIcon: (item) => {
+        const fill = item?.has_conflict ? '#ef4444' : '#3b82f6';
+        const inner = item?.has_conflict ? '#991b1b' : '#1e3a8a';
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">`
+            + `<path fill="${fill}" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>`
+            + `<circle cx="12" cy="9" r="2.6" fill="${inner}"/></svg>`;
+        return {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(38, 38),
+            anchor: new google.maps.Point(19, 35), // 핀 꼬리 끝이 좌표를 가리키도록
+        };
+    },
+
+    // 사용자 현재 위치로 지도 이동 (메인 화면 진입/복귀 시)
+    userLocation: null,
+    // 현재 위치 마커 (구글 순정 스타일: 파란 점 + 흰 링 + 은은한 헤일로)
+    userLocationMarker: null,
+    showUserLocationMarker: (latLng) => {
+        if (!MapController.map) return;
+        if (MapController.userLocationMarker) {
+            MapController.userLocationMarker.setPosition(latLng);
+            return;
+        }
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">`
+            + `<circle cx="24" cy="24" r="22" fill="#4285F4" fill-opacity="0.18"/>`
+            + `<circle cx="24" cy="24" r="10" fill="#ffffff"/>`
+            + `<circle cx="24" cy="24" r="7.5" fill="#4285F4"/></svg>`;
+        MapController.userLocationMarker = new google.maps.Marker({
+            map: MapController.map,
+            position: latLng,
+            clickable: false,
+            zIndex: 1, // 여행 핀들보다 아래
+            title: '현재 위치',
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                scaledSize: new google.maps.Size(44, 44),
+                anchor: new google.maps.Point(22, 22), // 원 중심이 좌표
+            },
+        });
+    },
+
+    goToUserLocation: (zoom = 15) => {
+        if (!MapController.map || !navigator.geolocation) return;
+        const apply = (latLng) => {
+            MapController.showUserLocationMarker(latLng);
+            MapController.map.panTo(latLng);
+            MapController.map.setZoom(zoom);
+            // 좌측 패널을 제외한 가시 영역 중앙으로 보정
+            setTimeout(() => {
+                const offsetX = MapController.getCoveredLeftWidth() / 2;
+                if (offsetX > 0) MapController.map.panBy(-offsetX, 0);
+            }, 250);
+        };
+        if (MapController.userLocation) {
+            apply(MapController.userLocation);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                MapController.userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                apply(MapController.userLocation);
+            },
+            () => {}, // 권한 거부/실패 시 조용히 유지
+            { enableHighAccuracy: false, timeout: 5000, maximumAge: 600000 }
+        );
+    },
+
+    // 지도 좌측을 덮고 있는 플로팅 패널들의 폭 계산 (목록/상세 카드)
+    // 패널이 지도를 덮지 않는 레이아웃에서는 자동으로 0이 됨
+    getCoveredLeftWidth: () => {
+        const mapEl = document.getElementById('map');
+        if (!mapEl) return 0;
+        const mapRect = mapEl.getBoundingClientRect();
+        let covered = 0;
+        document.querySelectorAll('.floating-left, #item-panel').forEach(el => {
+            const r = el.getBoundingClientRect();
+            // 화면에 보이면서 지도 왼쪽 가장자리에 붙어 지도를 덮는 패널만 계산
+            if (r.width > 0 && r.height > 0 && r.left < mapRect.left + 40) {
+                covered = Math.max(covered, r.right - mapRect.left);
+            }
+        });
+        return Math.max(0, covered);
     },
 
     focusMarker: (itemId) => {
@@ -174,8 +320,23 @@ const MapController = {
         if (targetMarkerObj && targetMarkerObj.marker) {
             const position = targetMarkerObj.marker.getPosition();
             if (position) {
+                // 패널 제외 가시 영역의 중앙에 핀이 오도록: 덮인 폭의 절반만큼 지도를 왼쪽으로 이동
+                const settle = () => {
+                    const offsetX = MapController.getCoveredLeftWidth() / 2;
+                    if (offsetX > 0) MapController.map.panBy(-offsetX, 0);
+                    MapController.showInfoWindow(targetMarkerObj);
+                };
                 MapController.map.panTo(position);
-                setTimeout(() => MapController.map.setZoom(13), 50);
+                // 이미 충분히 가까우면 줌 유지, 멀면 15까지 확대
+                // (settle은 패널 폭 전환 애니메이션 250ms가 끝난 뒤 측정·적용)
+                if (MapController.map.getZoom() < 15) {
+                    setTimeout(() => {
+                        MapController.map.setZoom(15);
+                        setTimeout(settle, 300);
+                    }, 50);
+                } else {
+                    setTimeout(settle, 300);
+                }
             }
         }
     }
@@ -183,7 +344,8 @@ const MapController = {
 
 const UIRenderer = {
     selectedItemId: null,
-    docsData: [], 
+    docsData: [],
+    tripsData: [],
 
     formatCurrency: (amount, currency = 'KRW') => {
         if (amount === null || amount === undefined || isNaN(amount)) return '';
@@ -228,8 +390,13 @@ const UIRenderer = {
         return String(timeStr);
     },
 
-    setAppClass: (stateClass) => { 
-        document.getElementById('app-container').className = `h-screen w-screen overflow-hidden flex bg-[#f3f4f6] text-[#1e293b] antialiased ${stateClass}`; 
+    setAppClass: (stateClass) => {
+        const app = document.getElementById('app-container');
+        // 보관함 오버레이는 좌측 패널 상태 전환과 독립 — 열려 있으면 유지
+        const keepDocs = stateClass !== 'state-docs'
+            && document.querySelector('.floating-left')
+            && app.classList.contains('state-docs');
+        app.className = `h-screen w-screen overflow-hidden flex bg-[#f3f4f6] text-[#1e293b] antialiased ${stateClass}${keepDocs ? ' state-docs' : ''}`;
     },
 
     // 오류 수정: UIRenderer 내부로 LNB 제어 로직 통합
@@ -260,8 +427,23 @@ const UIRenderer = {
     renderTripList: async () => {
         const container = document.getElementById('trip-list-container');
         UIRenderer.renderTripListSkeleton(container);
-        const trips = await DocketAPI.fetchTrips();
+        UIRenderer.tripsData = await DocketAPI.fetchTrips();
+        UIRenderer.renderTripCards();
+    },
+
+    // 여행 카드 렌더 — tripsData 캐시에 검색어(있으면)를 적용
+    renderTripCards: () => {
+        const container = document.getElementById('trip-list-container');
+        const query = (document.getElementById('trip-search-input')?.value || '').toLowerCase().trim();
+        const trips = query
+            ? UIRenderer.tripsData.filter(t => (t.title || '').toLowerCase().includes(query))
+            : UIRenderer.tripsData;
         container.innerHTML = '';
+
+        if (trips.length === 0) {
+            container.innerHTML = `<div class="text-center py-10 text-gray-400 text-sm">${query ? '검색 결과가 없습니다.' : '아직 여행이 없습니다.'}</div>`;
+            return;
+        }
 
         trips.forEach(trip => {
             const isConflict = trip.conflictCount > 0;
@@ -280,11 +462,44 @@ const UIRenderer = {
                 ${conflictBadge}
             `;
             tripCard.addEventListener('click', () => UIRenderer.openTimeline(trip.id, trip.title));
+
+            // 문서를 여행 카드 위에 드랍하면 그 여행에 일정으로 추가
+            // (ring은 실선 그림자라 점선 표현이 안 됨 — outline은 레이아웃에 영향 없이 점선 가능)
+            const highlight = ['outline-dashed', 'outline-2', 'outline-blue-400', 'outline-offset-[-2px]', 'bg-blue-50'];
+            const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(name =>
+                tripCard.addEventListener(name, prevent, false));
+            ['dragenter', 'dragover'].forEach(name =>
+                tripCard.addEventListener(name, () => tripCard.classList.add(...highlight), false));
+            ['dragleave', 'drop'].forEach(name =>
+                tripCard.addEventListener(name, () => tripCard.classList.remove(...highlight), false));
+            tripCard.addEventListener('drop', async (event) => {
+                const files = event.dataTransfer.files;
+                if (!files || files.length === 0) return;
+                // 진행 표시는 카드가 가로로 차오르는 애니메이션 하나로만
+                const fillControl = createCardFill(tripCard, files.length);
+                const result = await UploadController.uploadFiles(files, {
+                    targetType: 'schedule',
+                    tripId: trip.id,
+                    onProgress: (done) => fillControl.advance(done),
+                });
+                if (result.failed.length > 0) {
+                    fillControl.fail();
+                    alert(result.failed.map(f => `${f.file}: ${f.message}`).join('\n'));
+                } else {
+                    fillControl.finish();
+                }
+                setTimeout(() => UIRenderer.renderTripList(), 700);
+            });
+
             container.appendChild(tripCard);
         });
     },
 
     openTimeline: async (tripId, tripTitle) => {
+        // 타임라인 패널 전체 드롭 업로드용 현재 여행 추적
+        UIRenderer.currentTripId = tripId;
+        UIRenderer.currentTripTitle = tripTitle;
         UIRenderer.setAppClass('state-trip');
         document.getElementById('timeline-header-info').innerHTML = `<h2 class="text-lg font-bold text-gray-900 truncate-text">${tripTitle}</h2><p class="text-xs text-gray-500">상세 타임라인</p>`;
         const container = document.getElementById('timeline-container');
@@ -329,9 +544,30 @@ const UIRenderer = {
         });
 
         // 타임라인 컨테이너의 배경 세로선이 전체 높이를 커버할 수 있도록 relative 및 선 스타일 보강
-        container.innerHTML = '<div class="absolute left-[28px] top-6 bottom-6 w-[2px] bg-gray-200 z-0 h-full"></div>';
+        // 세로선 중심(30px)을 점(w-5, 중심 30px)과 정확히 정렬
+        container.innerHTML = '<div class="absolute left-[29px] top-6 bottom-6 w-[2px] bg-gray-200 z-0 h-full"></div>';
         
+        let lastDateKey = null;
         timelineItems.forEach(item => {
+            // 날짜가 바뀌면 구분선(날짜 칩 + 가로선) 삽입 — 날짜 없는 일정은 '날짜 미정' 그룹
+            const dateMatch = typeof item.sortTime === 'string' ? item.sortTime.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+            const dateKey = dateMatch ? dateMatch[0] : '__undated__';
+            if (dateKey !== lastDateKey) {
+                lastDateKey = dateKey;
+                let dateLabel = '날짜 미정';
+                if (dateMatch) {
+                    const weekday = ['일', '월', '화', '수', '목', '금', '토'][new Date(+dateMatch[1], +dateMatch[2] - 1, +dateMatch[3]).getDay()];
+                    dateLabel = `${+dateMatch[2]}월 ${+dateMatch[3]}일 (${weekday})`;
+                }
+                const divider = document.createElement('div');
+                divider.className = 'relative z-10 flex items-center gap-2.5 mb-4';
+                divider.innerHTML = `
+                    <span class="flex-shrink-0 bg-gray-800 text-white text-[11px] font-bold px-3 py-1 rounded-full shadow-sm">${dateLabel}</span>
+                    <div class="flex-1 h-px bg-gray-200"></div>
+                `;
+                container.appendChild(divider);
+            }
+
             const dotClass = item.has_conflict ? 'bg-red-500 animate-pulse' : 'bg-blue-500';
             const borderClass = item.has_conflict ? 'border-red-300 group-hover:border-red-500' : 'border-gray-200 group-hover:border-blue-400';
             const textClass = item.has_conflict ? 'text-red-600' : 'text-blue-600';
@@ -347,7 +583,7 @@ const UIRenderer = {
             if (UIRenderer.selectedItemId === uniqueNodeId) timelineItem.classList.add('timeline-item-selected');
 
             timelineItem.innerHTML = `
-                <div class="w-4 h-4 ${dotClass} rounded-full border-4 border-gray-50 z-10 flex-shrink-0 mt-1"></div>
+                <div class="w-5 h-5 ${dotClass} rounded-full border-4 border-gray-50 z-10 flex-shrink-0 mt-1"></div>
                 <div class="flex-1 min-w-0 bg-white border ${borderClass} p-3 rounded-xl shadow-sm transition">
                     <span class="${textClass} text-xs" style="font-weight: 700;">${item.displayTime}</span>
                     <h4 class="text-sm font-bold text-gray-900 mt-1 timeline-title">${item.displayTitle}</h4>
@@ -364,7 +600,8 @@ const UIRenderer = {
         const appContainer = document.getElementById('app-container');
         if (!appContainer) return;
 
-        // 상세 아이템 패널이 열려 있는 경우 상세 창을 닫고 타임라인 상태로 복귀
+        // 상세 아이템 패널이 열려 있는 경우 상세 창만 닫고 타임라인 상태로 복귀
+        // (여행은 계속 보고 있으므로 currentTripId는 유지 — 패널 드롭 업로드가 계속 동작)
         if (appContainer.classList.contains('state-item')) {
             const itemPanel = document.getElementById('item-panel');
             if (itemPanel) {
@@ -375,11 +612,16 @@ const UIRenderer = {
             return;
         }
 
-        // 그 외의 경우 마커를 지우고 전체 여행 목록 상태로 복귀
+        // 그 외의 경우 마커를 지우고 전체 여행 목록 상태로 복귀 + 지도는 현재 위치로
+        UIRenderer.currentTripId = null;
+        UIRenderer.currentTripTitle = null;
         if (typeof MapController !== 'undefined' && typeof MapController.clearMarkers === 'function') {
             MapController.clearMarkers();
         }
         UIRenderer.setAppClass('state-list');
+        if (typeof MapController !== 'undefined' && MapController.goToUserLocation) {
+            MapController.goToUserLocation();
+        }
     },
 
     openItem: async (itemId, nodeId = null) => {
@@ -390,6 +632,8 @@ const UIRenderer = {
         }
 
         UIRenderer.selectedItemId = targetNodeId;
+        // 상세 패널(z-20)이 보관함 오버레이(z-35)에 가려지지 않도록 보관함은 닫음
+        document.getElementById('app-container').classList.remove('state-docs');
         document.querySelectorAll('.timeline-item-selected').forEach(item => item.classList.remove('timeline-item-selected'));
         document.querySelector(`[data-node-id="${targetNodeId}"]`)?.classList.add('timeline-item-selected');
         
@@ -457,26 +701,26 @@ const UIRenderer = {
         html += `
             <div class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm mb-4">
                 <dl class="space-y-3">
-                    <div class="flex justify-between items-center">
-                        <dt class="text-xs text-gray-500">장소</dt>
-                        <dd class="text-xs font-medium text-gray-900">${displayLocation}</dd>
+                    <div class="flex justify-between items-start gap-4">
+                        <dt class="text-xs text-gray-500 flex-shrink-0 whitespace-nowrap">장소</dt>
+                        <dd class="text-xs font-medium text-gray-900 text-right break-words min-w-0">${displayLocation}</dd>
                     </div>
-                    <div class="flex justify-between items-center border-t border-gray-50 pt-3">
-                        <dt class="text-xs text-gray-500">예약 번호</dt>
-                        <dd class="text-xs font-medium text-gray-900">${displayBookingRef}</dd>
+                    <div class="flex justify-between items-start gap-4 border-t border-gray-50 pt-3">
+                        <dt class="text-xs text-gray-500 flex-shrink-0 whitespace-nowrap">예약 번호</dt>
+                        <dd class="text-xs font-medium text-gray-900 text-right break-words min-w-0">${displayBookingRef}</dd>
                     </div>
                     ${displayCancelDead ? `
-                    <div class="flex justify-between items-center border-t border-gray-50 pt-3">
-                        <dt class="text-xs text-gray-500">무료 취소 기한</dt>
-                        <dd class="text-xs font-medium text-red-600">${displayCancelDead}</dd>
+                    <div class="flex justify-between items-center gap-4 border-t border-gray-50 pt-3">
+                        <dt class="text-xs text-gray-500 flex-shrink-0 whitespace-nowrap">무료 취소 기한</dt>
+                        <dd class="text-xs font-medium text-red-600 text-right">${displayCancelDead}</dd>
                     </div>
                     ` : ''}
-                    <div class="flex justify-between items-center border-t border-gray-50 pt-3">
-                        <dt class="text-xs text-gray-500">결제 금액</dt>
-                        <dd class="text-xs font-medium text-gray-900">${displayPrice}</dd>
+                    <div class="flex justify-between items-center gap-4 border-t border-gray-50 pt-3">
+                        <dt class="text-xs text-gray-500 flex-shrink-0 whitespace-nowrap">결제 금액</dt>
+                        <dd class="text-xs font-medium text-gray-900 text-right">${displayPrice}</dd>
                     </div>
-                    <div class="flex justify-between items-center border-t border-gray-50 pt-3">
-                        <dt class="text-xs text-gray-500">원본 문서</dt>
+                    <div class="flex justify-between items-center gap-4 border-t border-gray-50 pt-3">
+                        <dt class="text-xs text-gray-500 flex-shrink-0 whitespace-nowrap">원본 문서</dt>
                         <dd>
                             <button id="view-document-button" class="text-blue-600 text-xs hover:underline font-bold" ${data.document_id ? '' : 'disabled'}>
                                 문서 보기
@@ -547,7 +791,12 @@ const UIRenderer = {
     },
 
     openDocs: async () => {
-        UIRenderer.setAppClass('state-docs');
+        if (document.querySelector('.floating-left')) {
+            // 보관함은 오버레이 — 현재 패널 상태(목록/타임라인)를 유지한 채 위에 띄움
+            document.getElementById('app-container').classList.add('state-docs');
+        } else {
+            UIRenderer.setAppClass('state-docs');
+        }
         UIRenderer.setLNBActive('docs');
         
         const container = document.getElementById('docs-grid-container');
@@ -555,6 +804,16 @@ const UIRenderer = {
         
         UIRenderer.docsData = await DocketAPI.fetchAllDocuments();
         UIRenderer.renderDocsList(UIRenderer.docsData);
+    },
+
+    closeDocs: () => {
+        if (document.querySelector('.floating-left')) {
+            // 오버레이만 걷어내고 이전 화면(목록/타임라인) 그대로 유지
+            document.getElementById('app-container').classList.remove('state-docs');
+        } else {
+            UIRenderer.setAppClass('state-list');
+            UIRenderer.setLNBActive('trip');
+        }
     },
 
     renderDocsList: (docs) => {
@@ -566,38 +825,58 @@ const UIRenderer = {
             return;
         }
 
+        // 여행별 그룹핑 — 문서가 최신순이므로 그룹도 최근 문서가 있는 여행부터
+        const groups = new Map();
         docs.forEach(doc => {
-            const iconMap = { hotel: 'fa-bed', flight: 'fa-plane', museum: 'fa-building-columns', other: 'fa-file-lines' };
-            const icon = iconMap[doc.doc_type] || 'fa-file-pdf';
-            const dateStr = doc.created_at ? UIRenderer.formatDateOnly(doc.created_at) : '날짜 없음';
+            const key = doc.trip_id || doc.trip_title || '__etc__';
+            if (!groups.has(key)) groups.set(key, { title: doc.trip_title || '미분류', docs: [] });
+            groups.get(key).docs.push(doc);
+        });
 
-            const card = document.createElement('div');
-            card.className = 'bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition cursor-pointer flex flex-col group';
-            card.innerHTML = `
-                <div class="h-32 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-center mb-3 group-hover:bg-blue-50 transition">
-                    <i class="fa-solid ${icon} text-4xl text-gray-300 group-hover:text-blue-400 transition"></i>
-                </div>
-                <h3 class="text-sm font-bold text-gray-900 truncate-text mb-1" title="${doc.file_name}">${doc.file_name}</h3>
-                <p class="text-[11px] text-gray-500 truncate-text"><i class="fa-solid fa-map-pin mr-1"></i>${doc.trip_title}</p>
-                <div class="mt-auto pt-3 flex justify-between items-center text-[10px] text-gray-400">
-                    <span>${doc.item_title}</span>
-                    <span>${dateStr}</span>
-                </div>
+        groups.forEach(group => {
+            // 그룹 헤더: 여행 이름 + 문서 수 + 가로선 (그리드 한 줄 전체 차지)
+            const header = document.createElement('div');
+            header.className = 'col-span-full flex items-center gap-2.5 mt-2 first:mt-0';
+            header.innerHTML = `
+                <i class="fa-solid fa-suitcase-rolling text-blue-600 text-sm"></i>
+                <h3 class="text-sm font-bold text-gray-900">${group.title}</h3>
+                <span class="text-[11px] font-bold text-gray-400">${group.docs.length}</span>
+                <div class="flex-1 h-px bg-gray-200"></div>
             `;
-            
-            card.addEventListener('click', async () => {
-                try {
-                    const docDetail = await DocketAPI.fetchDocumentDetail(doc.document_id);
-                    if (docDetail && docDetail.original_url) {
-                        window.open(docDetail.original_url, '_blank');
-                    } else {
-                        alert('원본 문서 링크를 찾을 수 없습니다.');
+            container.appendChild(header);
+
+            group.docs.forEach(doc => {
+                const iconMap = { hotel: 'fa-bed', flight: 'fa-plane', museum: 'fa-building-columns', other: 'fa-file-lines' };
+                const icon = iconMap[doc.doc_type] || 'fa-file-pdf';
+                const dateStr = doc.created_at ? UIRenderer.formatDateOnly(doc.created_at) : '날짜 없음';
+
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition cursor-pointer flex flex-col group';
+                card.innerHTML = `
+                    <div class="h-32 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-center mb-3 group-hover:bg-blue-50 transition">
+                        <i class="fa-solid ${icon} text-4xl text-gray-300 group-hover:text-blue-400 transition"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-gray-900 truncate-text mb-1" title="${doc.file_name}">${doc.file_name}</h3>
+                    <div class="mt-auto pt-3 flex justify-between items-center text-[10px] text-gray-400">
+                        <span>${doc.item_title}</span>
+                        <span>${dateStr}</span>
+                    </div>
+                `;
+
+                card.addEventListener('click', async () => {
+                    try {
+                        const docDetail = await DocketAPI.fetchDocumentDetail(doc.document_id);
+                        if (docDetail && docDetail.original_url) {
+                            window.open(docDetail.original_url, '_blank');
+                        } else {
+                            alert('원본 문서 링크를 찾을 수 없습니다.');
+                        }
+                    } catch (error) {
+                        alert('문서 정보를 불러오는 데 실패했습니다.');
                     }
-                } catch (error) {
-                    alert('문서 정보를 불러오는 데 실패했습니다.');
-                }
+                });
+                container.appendChild(card);
             });
-            container.appendChild(card);
         });
     },
 
@@ -617,14 +896,53 @@ const UIRenderer = {
     }
 };
 
+// 카드가 진행바처럼 가로로 차오르는 진행 표시 (문서당 ~40초 기준 시뮬레이션)
+const createCardFill = (card, totalFiles) => {
+    card.classList.add('relative', 'overflow-hidden');
+    const fill = document.createElement('div');
+    fill.className = 'absolute inset-y-0 left-0 pointer-events-none';
+    fill.style.cssText = 'width:0%; background:rgba(59,130,246,0.14); transition:width .5s ease, opacity .5s ease, background .3s ease;';
+    card.appendChild(fill);
+
+    let done = 0;
+    let fileStart = Date.now();
+    const update = () => {
+        const seconds = (Date.now() - fileStart) / 1000;
+        const inner = Math.min(0.95, 1 - Math.exp(-seconds / 14)); // 40초쯤에 ~94%
+        fill.style.width = `${Math.min(99, ((done + inner) / totalFiles) * 100)}%`;
+    };
+    const timer = setInterval(update, 400);
+    update();
+
+    return {
+        advance: (newDone) => { done = newDone; fileStart = Date.now(); update(); },
+        finish: () => {
+            clearInterval(timer);
+            fill.style.background = 'rgba(59,130,246,0.22)';
+            fill.style.width = '100%';
+            setTimeout(() => { fill.style.opacity = '0'; }, 500);
+            setTimeout(() => fill.remove(), 1100);
+        },
+        fail: () => {
+            clearInterval(timer);
+            fill.style.background = 'rgba(239,68,68,0.16)';
+            fill.style.width = '100%';
+            setTimeout(() => { fill.style.opacity = '0'; }, 900);
+            setTimeout(() => fill.remove(), 1500);
+        },
+    };
+};
+
 const UploadController = {
     stagedFiles: [],
     returnState: 'state-list',
     uploadMode: 'trip',
+    targetTripId: '',   // schedule 모드에서 일정을 추가할 대상 여행 id
 
-    openUpload: (uploadMode = 'trip', returnState = 'state-list') => {
+    openUpload: (uploadMode = 'trip', returnState = 'state-list', targetTripId = '') => {
         UploadController.uploadMode = uploadMode;
         UploadController.returnState = returnState;
+        UploadController.targetTripId = targetTripId;
         const isSchedule = uploadMode === 'schedule';
         document.getElementById('upload-panel-title').innerText = isSchedule ? '새 일정 추가' : '새 여행 추가';
         UIRenderer.setAppClass('state-upload');
@@ -635,6 +953,7 @@ const UploadController = {
         UploadController.clearFiles();
         UploadController.returnState = 'state-list';
         UploadController.uploadMode = 'trip';
+        UploadController.targetTripId = '';
         UIRenderer.setAppClass(returnState);
     },
 
@@ -646,6 +965,32 @@ const UploadController = {
         ['dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-active'), false));
         dropZone.addEventListener('drop', event => UploadController.handleFiles(event.dataTransfer.files), false);
         dropZone.addEventListener('click', () => document.getElementById('file-input').click());
+    },
+
+    // 타임라인(여행 상세) 패널: 어디에 놓아도 현재 열린 여행에 일정으로 추가
+    // (드래그 안내·진행 표시는 지도 영역 드롭 독/알약이 전담 — 패널 자체 표시 없음)
+    initTimelinePanelDrop: () => {
+        const panel = document.getElementById('trip-panel');
+        if (!panel) return;
+
+        const uploadToCurrentTrip = async (files) => {
+            const tripId = UIRenderer.currentTripId;
+            if (!tripId || !files || files.length === 0) return;
+            const result = await UploadController.uploadFiles(files, { targetType: 'schedule', tripId });
+            if (result.failed.length > 0) {
+                alert(result.failed.map(f => `${f.file}: ${f.message}`).join('\n'));
+            }
+            // 타임라인·지도·여행 목록(기간 확장 반영) 갱신
+            UIRenderer.openTimeline(tripId, UIRenderer.currentTripTitle || '');
+            UIRenderer.renderTripList();
+        };
+
+        panel.addEventListener('dragover', (e) => e.preventDefault());
+        panel.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadToCurrentTrip(e.dataTransfer.files);
+        });
     },
 
     handleFiles: (files) => {
@@ -662,7 +1007,6 @@ const UploadController = {
         UploadController.stagedFiles = [];
         document.getElementById('file-input').value = '';
         UploadController.renderFileList();
-        document.getElementById('upload-progress-container').classList.add('hidden');
     },
 
     // 텍스트 입력 체크를 제거하고 오직 파일 업로드 개수만 확인
@@ -697,26 +1041,207 @@ const UploadController = {
         }
     },
 
-    startParsing: () => {
-        if (!UploadController.hasInput()) return;
-        document.getElementById('btn-parse').disabled = true;
-        document.getElementById('upload-progress-container').classList.remove('hidden');
-        const progressBar = document.getElementById('progress-bar');
-        const progressText = document.getElementById('progress-text');
-        let progress = 0;
-        const interval = setInterval(() => {
-            progress += Math.floor(Math.random() * 15) + 5;
-            if (progress >= 100) {
-                progress = 100;
-                clearInterval(interval);
-                setTimeout(() => {
-                    UploadController.closeUpload();
-                    UIRenderer.renderTripList();
-                }, 500);
+    // 드롭 독: 평소 하단 중앙 알약 → 파일이 창 위로 오면 지도 영역 전체로 확장
+    initDropDock: () => {
+        const dock = document.getElementById('drop-dock');
+        if (!dock) return;
+        const textEl = document.getElementById('drop-dock-text');
+        const defaultText = '문서를 화면으로 끌어오세요';
+        let dragDepth = 0;
+
+        const expand = (on) => {
+            dock.classList.toggle('expanded', on);
+            if (on) {
+                textEl.textContent = UIRenderer.currentTripId
+                    ? '바보는 방황을 하고 현명한 사람은 여행을 한다. - 토마스 폴러'
+                    : '여행은 사람과 같다. 어느 두 여행도 똑같지 않다. - 존 스타인벡';
+            } else if (!dock.dataset.busy) {
+                textEl.textContent = defaultText;
             }
-            progressBar.style.width = `${progress}%`;
-            progressText.innerText = `${progress}%`;
-        }, 300);
+        };
+
+        // 캡처 단계에서 수신: 패널/카드 핸들러의 stopPropagation과 무관하게
+        // 어디에 드롭하든 독이 확실히 접히도록 보장
+        window.addEventListener('dragenter', (e) => {
+            if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+            dragDepth += 1;
+            expand(true);
+        }, true);
+        window.addEventListener('dragover', (e) => e.preventDefault(), true);
+        window.addEventListener('dragleave', () => {
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (dragDepth === 0) expand(false);
+        }, true);
+        window.addEventListener('drop', (e) => {
+            e.preventDefault(); // 브라우저가 파일을 열어버리는 것 방지
+            dragDepth = 0;
+            expand(false);
+        }, true);
+
+        dock.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dragDepth = 0;
+            expand(false);
+            const files = e.dataTransfer.files;
+            if (!files || files.length === 0) return;
+
+            const tripId = UIRenderer.currentTripId;
+            if (!tripId) {
+                UploadController.uploadAsNewTrip(files); // 새 여행: 플레이스홀더 카드가 진행 표시
+                return;
+            }
+            // 현재 열린 여행에 추가 — 알약 진행 표시는 uploadFiles가 공용으로 처리
+            const result = await UploadController.uploadFiles(files, { targetType: 'schedule', tripId });
+            if (result.failed.length > 0) {
+                alert(result.failed.map(f => `${f.file}: ${f.message}`).join('\n'));
+            }
+            UIRenderer.openTimeline(tripId, UIRenderer.currentTripTitle || '');
+            UIRenderer.renderTripList();
+        });
+    },
+
+    // 하단 드롭존: 새 여행 생성 업로드 — 목록 맨 위에 플레이스홀더 카드가 차오르며 진행 표시
+    uploadAsNewTrip: async (files) => {
+        if (!files || files.length === 0) return;
+        const container = document.getElementById('trip-list-container');
+        const placeholder = document.createElement('div');
+        placeholder.className = 'bg-white border-2 border-blue-200 rounded-xl p-4 shadow-sm';
+        // 실제 여행 카드와 동일한 2줄 구조(제목 + 날짜 줄)로 위아래 간격을 맞춤
+        placeholder.innerHTML = `
+            <h3 class="text-lg font-bold text-gray-400 mb-1">새 여행 만드는 중…</h3>
+            <p class="text-xs text-gray-400"><i class="fa-regular fa-calendar mr-1"></i> <span class="placeholder-stage">문서를 읽는 중</span></p>`;
+        container.appendChild(placeholder);
+        placeholder.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        const fillControl = createCardFill(placeholder, files.length);
+
+        // 진행 시간에 따라 에이전트 단계 멘트가 순환
+        const stageEl = placeholder.querySelector('.placeholder-stage');
+        const stages = ['문서를 읽는 중', '문서 유형 분류 중', '핵심 정보 추출 중',
+                        '일정으로 정리하는 중', '캘린더에 등록하는 중'];
+        let stageIndex = 0;
+        const stageTimer = setInterval(() => {
+            stageIndex = (stageIndex + 1) % stages.length;
+            stageEl.textContent = stages[stageIndex];
+        }, 8000);
+
+        const result = await UploadController.uploadFiles(files, {
+            targetType: 'trip',
+            onProgress: (done) => fillControl.advance(done),
+        });
+        clearInterval(stageTimer);
+        stageEl.textContent = '완료!';
+        if (result.failed.length > 0) {
+            fillControl.fail();
+            alert(result.failed.map(f => `${f.file}: ${f.message}`).join('\n'));
+        } else {
+            fillControl.finish();
+        }
+        setTimeout(() => UIRenderer.renderTripList(), 700);
+    },
+
+    // 하단 알약(드롭 독) 공용 진행 표시 — 어떤 경로로 업로드하든 동일하게 동작
+    // 에이전트 파이프라인 단계에 맞춰 멘트가 8초마다 넘어감 (문서당 30~45초 소요 기준)
+    // 처리 중에 추가로 드롭한 문서도 전역 큐로 합산: (1/1) → 추가 드롭 → (1/2), (2/2)
+    DOCK_STAGES: ['문서를 읽는 중', '문서 유형 분류 중', '핵심 정보 추출 중',
+                  '일정으로 정리하는 중', '캘린더에 등록하는 중'],
+    _dockState: { active: 0, total: 0, done: 0, stageIndex: 0, timer: null },
+
+    _renderDockStage: () => {
+        const state = UploadController._dockState;
+        const dock = document.getElementById('drop-dock');
+        const textEl = document.getElementById('drop-dock-text');
+        if (!dock || !textEl || state.active === 0 || dock.classList.contains('expanded')) return;
+        // 카운터는 에이전트 단계 진행률 (1/5 ~ 5/5), 문서가 여러 개일 때만 몇 번째 문서인지 앞에 표시
+        const stageText = `${UploadController.DOCK_STAGES[state.stageIndex]}… (${state.stageIndex + 1}/${UploadController.DOCK_STAGES.length})`;
+        const docCurrent = Math.min(state.done + 1, state.total);
+        textEl.textContent = state.total > 1 ? `${docCurrent}번째 문서 · ${stageText}` : stageText;
+    },
+
+    dockUploadStart: (count) => {
+        const state = UploadController._dockState;
+        const dock = document.getElementById('drop-dock');
+        state.active += 1;
+        state.total += count;
+        if (dock) dock.dataset.busy = '1';
+        if (!state.timer) {
+            state.timer = setInterval(() => {
+                state.stageIndex = Math.min(state.stageIndex + 1, UploadController.DOCK_STAGES.length - 1);
+                UploadController._renderDockStage();
+            }, 8000);
+        }
+        UploadController._renderDockStage();
+    },
+
+    dockFileStart: () => {
+        UploadController._dockState.stageIndex = 0; // 새 문서 → 단계 멘트 처음부터
+        UploadController._renderDockStage();
+    },
+
+    dockFileDone: () => {
+        UploadController._dockState.done += 1;
+    },
+
+    dockUploadEnd: () => {
+        const state = UploadController._dockState;
+        state.active = Math.max(0, state.active - 1);
+        if (state.active > 0) return; // 다른 업로드가 아직 진행 중이면 큐 유지
+        clearInterval(state.timer);
+        state.timer = null;
+        state.total = 0; state.done = 0; state.stageIndex = 0;
+        const dock = document.getElementById('drop-dock');
+        const textEl = document.getElementById('drop-dock-text');
+        if (!dock) return;
+        delete dock.dataset.busy;
+        if (textEl && !dock.classList.contains('expanded')) textEl.textContent = '완료!';
+        setTimeout(() => {
+            if (textEl && !dock.dataset.busy && !dock.classList.contains('expanded')) {
+                textEl.textContent = '문서를 화면으로 끌어오세요';
+            }
+        }, 1200);
+    },
+
+    // 실제 업로드 엔진: 파일들을 순차로 백엔드에 전송 (문서당 30~45초 소요)
+    // 반환: { ok: 성공 수, failed: [{file, message}] }
+    uploadFiles: async (files, { targetType = 'trip', tripId = '', onProgress = null } = {}) => {
+        const list = Array.from(files);
+        const failed = [];
+        let ok = 0;
+        UploadController.dockUploadStart(list.length);
+        for (let i = 0; i < list.length; i++) {
+            if (onProgress) onProgress(i, list.length, list[i].name);
+            UploadController.dockFileStart();
+            try {
+                await DocketAPI.parseDocument({ document: list[i], targetType, tripId });
+                ok += 1;
+            } catch (error) {
+                failed.push({ file: list[i].name, message: error.message });
+            }
+            UploadController.dockFileDone();
+        }
+        if (onProgress) onProgress(list.length, list.length, '');
+        UploadController.dockUploadEnd();
+        return { ok, failed };
+    },
+
+    // 업로드 패널용 실행 (진행바 없음 — 진행 표시는 카드 차오르기 방식으로 통일)
+    startParsing: async () => {
+        if (!UploadController.hasInput()) return;
+        const parseButton = document.getElementById('btn-parse');
+        parseButton.disabled = true;
+        parseButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>에이전트가 문서를 분석 중입니다…';
+
+        const result = await UploadController.uploadFiles(UploadController.stagedFiles, {
+            targetType: UploadController.uploadMode,
+            tripId: UploadController.targetTripId || '',
+        });
+        parseButton.innerHTML = '문서 분석 시작';
+
+        if (result.failed.length > 0) {
+            alert(result.failed.map(f => `${f.file}: ${f.message}`).join('\n'));
+        }
+        UploadController.closeUpload();
+        UIRenderer.renderTripList();
     }
 };
 
@@ -730,6 +1255,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     MapController.init();
     UploadController.initDragAndDrop();
+    UploadController.initTimelinePanelDrop();
+    UploadController.initDropDock();
 
     // 초기 해시 딥링킹 처리
     if (window.location.hash === '#docs') {
@@ -804,6 +1331,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     document.getElementById('docs-search-input')?.addEventListener('keyup', UIRenderer.handleDocsSearch);
+    document.getElementById('trip-search-input')?.addEventListener('input', UIRenderer.renderTripCards);
     
     document.getElementById('lnb-trip-button')?.addEventListener('click', () => {
         window.location.hash = '';
@@ -818,23 +1346,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (inlineDropZone && inlineFileInput) {
         const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => inlineDropZone.addEventListener(eventName, prevent, false));
-        ['dragenter', 'dragover'].forEach(eventName => inlineDropZone.addEventListener(eventName, () => inlineDropZone.classList.add('border-blue-500', 'bg-blue-50/50'), false));
-        ['dragleave', 'drop'].forEach(eventName => inlineDropZone.addEventListener(eventName, () => inlineDropZone.classList.remove('border-blue-500', 'bg-blue-50/50'), false));
+        ['dragenter', 'dragover'].forEach(eventName => inlineDropZone.addEventListener(eventName, () => inlineDropZone.classList.add('drop-aurora-active'), false));
+        ['dragleave', 'drop'].forEach(eventName => inlineDropZone.addEventListener(eventName, () => inlineDropZone.classList.remove('drop-aurora-active'), false));
         
         inlineDropZone.addEventListener('drop', (e) => {
             const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                UploadController.handleFiles(files);
-                UploadController.startParsing(); // 드롭 즉시 분석 시작 연동
-            }
+            if (files.length > 0) UploadController.uploadAsNewTrip(files);
         });
-        
+
         inlineDropZone.addEventListener('click', () => inlineFileInput.click());
         inlineFileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                UploadController.handleFiles(e.target.files);
-                UploadController.startParsing();
-            }
+            if (e.target.files.length > 0) UploadController.uploadAsNewTrip(e.target.files);
+            inlineFileInput.value = '';
         });
     }
 });

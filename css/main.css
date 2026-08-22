@@ -1,0 +1,296 @@
+/* main.html 전용 — 지도 풀스크린 + 플로팅 패널 레이아웃
+   (기존 selectTravel.css 대신 사용, app.js의 state 클래스 체계와 호환) */
+
+/* ── 기본 배치 ── */
+#map-area { position: fixed; inset: 0; z-index: 0; }
+
+.floating-left {
+    position: fixed; left: 20px; top: 20px; bottom: 20px;
+    width: 450px; z-index: 20;
+    transition: width 0.25s ease;
+    display: flex; flex-direction: column;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 20px;
+    box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+    overflow: hidden;
+}
+
+/* 좌측 플로팅 패널 안에서 목록/타임라인은 서로 전환 */
+#list-panel, #trip-panel { display: none; flex: 1; min-height: 0; flex-direction: column; }
+#item-panel, #docs-panel, #upload-panel { display: none; }
+
+.state-list  #list-panel  { display: flex; }
+.state-trip  #trip-panel  { display: flex; }
+.state-item  #trip-panel  { display: flex; }
+
+/* 일정 상세: 두 패널이 함께 열리면 400(목록) + 500(상세) */
+.state-item .floating-left { width: 450px; }
+.state-item #item-panel {
+    display: flex; flex-direction: column;
+    position: fixed; left: 486px; top: 20px; bottom: 20px;
+    width: 450px; z-index: 20;
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 20px;
+    box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+    overflow: hidden;
+}
+
+/* 문서 보관함: 좌측 패널은 그대로 두고, 그 오른쪽 영역을 채우는 플로팅 카드 */
+.state-docs #docs-panel {
+    display: flex; flex-direction: column;
+    position: fixed; left: 486px; right: 20px; top: 20px; bottom: 20px;
+    z-index: 35; /* 플로팅 버튼(z-30: 보관함/내정보/로그아웃)보다 위에 표시 */
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+    overflow: hidden;
+}
+/* 보관함은 오버레이 — 좌측 패널은 기존 상태(state-list/state-trip)가 그대로 결정 */
+
+/* 업로드 패널(잘 안 쓰임): 중앙 플로팅 카드 */
+.state-upload #upload-panel {
+    display: flex; flex-direction: column;
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 480px; max-height: 80vh; z-index: 30;
+    background: #fff; border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.3);
+    overflow: hidden;
+}
+.state-upload .floating-left { display: flex; }
+.state-upload #list-panel { display: flex; }
+
+/* ── 플로팅 버튼 (우상단 내정보/로그아웃, 우하단 보관함) ── */
+.floating-button {
+    position: fixed; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16);
+    color: #334155; cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease, color .15s ease;
+}
+.floating-button:hover { transform: translateY(-2px); color: #1e3a8a; box-shadow: 0 10px 26px rgba(15,23,42,.22); }
+
+#user-info-button    { top: 20px; right: 20px;  width: 46px; height: 46px; border-radius: 9999px; font-size: 17px; }
+#lnb-signout-button  { top: 20px; right: 76px;  width: 46px; height: 46px; border-radius: 9999px; font-size: 15px; }
+#open-docs-button    { bottom: 20px; right: 20px; width: 54px; height: 54px; border-radius: 16px; font-size: 19px; }
+
+/* ── 로딩 상태 / 강조 (selectTravel.css 미포함 대체) ── */
+#item-loading { display: none; }
+#item-panel.is-loading #item-loading { display: flex; }
+
+/* 선택된 일정: 원본(selectTravel.css)과 동일하게 카드 자체를 은은하게 강조 */
+.timeline-item-selected > div:last-child {
+    border-color: #1e3a8a;
+    background-color: #eff6ff;
+    box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.15), 0 4px 10px rgba(30, 58, 138, 0.12);
+}
+
+[class*="skeleton"] {
+    background: #e5e7eb; border-radius: 8px; min-height: 12px;
+    animation: sk-pulse 1.4s ease-in-out infinite;
+}
+[class*="skeleton"] + [class*="skeleton"] { margin-top: 8px; }
+.timeline-skeleton-card, .detail-skeleton-card { min-height: 64px; }
+@keyframes sk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* ── 드롭존 오로라 효과: 파일을 잡고 위에 올렸을 때 ── */
+#inline-drop-zone { position: relative; overflow: hidden; }
+#inline-drop-zone > * { position: relative; z-index: 1; }
+
+/* 회색 물결: 두 겹의 회색 덩어리가 서로 반대로 움직이며 간섭 → 울렁이는 느낌 */
+#inline-drop-zone::before,
+#inline-drop-zone::after {
+    content: '';
+    position: absolute; inset: -60%;
+    filter: blur(24px);
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+}
+#inline-drop-zone::before {
+    background:
+        radial-gradient(45% 55% at 30% 35%, rgba(100, 116, 139, 0.34), transparent 70%),
+        radial-gradient(50% 60% at 72% 55%, rgba(148, 163, 184, 0.30), transparent 70%),
+        radial-gradient(48% 55% at 50% 85%, rgba(71, 85, 105, 0.24), transparent 72%);
+}
+#inline-drop-zone::after {
+    background:
+        radial-gradient(50% 60% at 70% 30%, rgba(148, 163, 184, 0.30), transparent 70%),
+        radial-gradient(45% 50% at 25% 70%, rgba(100, 116, 139, 0.26), transparent 70%);
+}
+
+#inline-drop-zone.drop-aurora-active { border-color: rgba(148, 163, 184, 0.95); }
+#inline-drop-zone.drop-aurora-active::before {
+    opacity: 1;
+    animation: gray-swell-a 3.6s ease-in-out infinite alternate;
+}
+#inline-drop-zone.drop-aurora-active::after {
+    opacity: 1;
+    animation: gray-swell-b 4.8s ease-in-out infinite alternate-reverse;
+}
+
+/* 진폭을 키우고 위아래 출렁임을 강조한 두 개의 상이한 리듬 */
+@keyframes gray-swell-a {
+    0%   { transform: translate(-10%,  6%) rotate(-8deg)  scale(1.00); }
+    30%  { transform: translate(  4%, -9%) rotate(14deg)  scale(1.18); }
+    60%  { transform: translate( 10%,  8%) rotate(-6deg)  scale(1.05); }
+    100% { transform: translate( -6%,-11%) rotate(22deg)  scale(1.22); }
+}
+@keyframes gray-swell-b {
+    0%   { transform: translate(  8%, -7%) rotate(10deg)  scale(1.10); }
+    40%  { transform: translate( -9%,  9%) rotate(-16deg) scale(0.95); }
+    75%  { transform: translate(  5%, 12%) rotate(6deg)   scale(1.20); }
+    100% { transform: translate(-11%, -8%) rotate(-12deg) scale(1.02); }
+}
+
+/* ── 드롭 독: 평소엔 하단 중앙 납작한 점선 알약 → 파일 드래그 시 지도 영역 전체로 확장 ── */
+.drop-dock {
+    position: fixed;
+    /* 좌측 패널(~486px)을 제외한 지도 영역의 가로 중앙: 중심 = 50vw + 233px, 알약 폭 260px */
+    left: calc(50vw + 103px); right: calc(50vw - 363px);
+    top: calc(100% - 66px); bottom: 20px;
+    z-index: 40;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    border: 2px dashed #94a3b8;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(10px);
+    color: #64748b; font-size: 12px; font-weight: 600;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.14);
+    pointer-events: none; /* 평소엔 지도 조작을 막지 않음 */
+    overflow: hidden;
+    /* 네 변이 동일한 타이밍·이징으로 움직여야 사각형이 찌그러지지 않음 (오버슈트 제거) */
+    transition: left .32s cubic-bezier(.25,.8,.3,1), right .32s cubic-bezier(.25,.8,.3,1),
+                top .32s cubic-bezier(.25,.8,.3,1), bottom .32s cubic-bezier(.25,.8,.3,1),
+                border-radius .32s cubic-bezier(.25,.8,.3,1),
+                background .32s ease, border-color .32s ease, box-shadow .32s ease;
+}
+.drop-dock i { font-size: 14px; }
+.drop-dock > * { position: relative; z-index: 1; }
+/* 문서 보관함이 열려 있으면 알약은 보관함 카드 뒤로 (드래그로 확장될 때만 앞으로) */
+.state-docs .drop-dock { z-index: 30; }
+.state-docs .drop-dock.expanded { z-index: 40; }
+
+/* 내용물은 박스가 거의 펼쳐진 뒤 페이드인 — 아이콘/문구 크기 점프를 가림 */
+.drop-dock.expanded > * { animation: drop-dock-content-in .28s ease .15s backwards; }
+@keyframes drop-dock-content-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+}
+
+.drop-dock.expanded {
+    /* 좌측 패널을 제외한 지도 영역 전체를 채움 — 타임라인 드롭 오버레이와 같은 디자인 */
+    left: 486px; right: 20px; top: 20px; bottom: 20px;
+    border-radius: 20px;
+    border-color: #60a5fa;               /* blue-400 점선 */
+    background: rgba(59, 130, 246, 0.10); /* blue-500/10 투명 배경 */
+    backdrop-filter: none;
+    box-shadow: none;
+    font-size: 17px; font-weight: 700; color: #2563eb;
+    pointer-events: auto; /* 확장 상태에서만 드롭 받기 */
+    flex-direction: column;
+}
+.drop-dock.expanded i { font-size: 40px; }
+
+/* ── 지도 InfoWindow 스킨: 라운드 카드 + 꼬리 (애플 사진 지도 느낌) ── */
+.gm-style .gm-style-iw-c {
+    border-radius: 14px !important;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22) !important;
+    padding: 0 !important;
+}
+.gm-style .gm-style-iw-d {
+    overflow: hidden !important;
+    padding: 0 !important;
+}
+/* 기본 닫기(X) 버튼을 카드 안쪽으로 정돈 */
+.gm-style .gm-style-iw-c button[title="Close"],
+.gm-style .gm-style-iw-c button[aria-label="닫기"],
+.gm-style .gm-style-iw-c button[aria-label="Close"] {
+    top: 2px !important; right: 2px !important;
+}
+
+/* 핀 위 상시 문서 썸네일 말풍선 (애플 사진 지도 스타일) */
+.doc-thumb-overlay {
+    position: absolute;
+    transform: translate(-50%, -100%) translateY(-42px); /* 핀 머리 위에 배치 */
+    cursor: pointer;
+    z-index: 5;
+    transition: transform .15s ease;
+}
+.doc-thumb-overlay:hover { transform: translate(-50%, -100%) translateY(-46px) scale(1.06); }
+.doc-thumb-overlay img {
+    display: block;
+    width: 76px; height: 76px;
+    object-fit: cover; object-position: top;
+    border-radius: 14px;
+    border: 3px solid #fff;
+    background: #fff;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.30);
+}
+.doc-thumb-overlay::after { /* 말풍선 꼬리 */
+    content: '';
+    position: absolute; left: 50%; bottom: -7px;
+    transform: translateX(-50%);
+    border: 8px solid transparent;
+    border-top-color: #fff;
+    border-bottom: 0;
+    filter: drop-shadow(0 2px 1px rgba(15, 23, 42, 0.12));
+}
+
+.map-info-wrap {
+    max-width: 240px;
+    font-family: 'Pretendard', sans-serif;
+}
+.map-info-thumb {
+    display: block;
+    width: 100%; height: 110px;
+    object-fit: cover; object-position: top;
+    background: #f1f5f9;
+}
+.map-info-card {
+    padding: 12px 32px 12px 14px;
+    max-width: 240px;
+    font-family: 'Pretendard', sans-serif;
+}
+.map-info-time {
+    font-size: 11px; font-weight: 700; color: #2563eb;
+    margin-bottom: 2px;
+}
+.map-info-title {
+    font-size: 14px; font-weight: 700; color: #111827;
+    line-height: 1.35;
+}
+.map-info-location {
+    font-size: 11px; color: #6b7280; margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 210px;
+}
+
+/* 상세 패널 정보 표: 라벨은 절대 꺾이지 않고, 긴 값은 오른쪽 정렬로 줄바꿈 */
+#item-content dl dt { flex-shrink: 0; white-space: nowrap; }
+#item-content dl dd { text-align: right; overflow-wrap: break-word; min-width: 0; }
+
+/* 타임라인 헤더 제목: 오른쪽 끝까지 붙지 않고 여유를 두고 말줄임 */
+#timeline-header-info { padding-right: 28px; }
+
+/* ── 한 줄 말줄임 (selectTravel.css 미포함 대체) ── */
+.truncate-text,
+.timeline-title,
+.timeline-desc {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0; /* flex 자식에서도 말줄임이 작동하도록 */
+}
+
+/* 스크롤바 */
+.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }

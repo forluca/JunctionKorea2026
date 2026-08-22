@@ -26,22 +26,19 @@
 ```text
 JunctionKorea2026/
 ├─ login.html                # Google 로그인 화면
-├─ main.html                 # 여행 서비스 화면
-├─ wallet.html               # 통합 지갑 화면
+├─ main.html                 # 메인 화면 (풀스크린 지도 + 플로팅 패널 + 드롭 독)
 ├─ user.html                 # 사용자 정보 화면
 ├─ assets/
-│  └─ logo.png               # 선택 가능한 공통 PNG 로고
+│  └─ upstage-studio-ad.jpg  # 좌측 패널 하단 Upstage Studio 배너
 ├─ css/
+│  ├─ main.css               # 메인 화면 플로팅 레이아웃, 드롭 독, 지도 스킨
 │  └─ selectTravel.css       # 패널 상태, 애니메이션, 스켈레톤, 지도 레이아웃
 ├─ js/
 │  ├─ api.js                 # 공통 API 및 로컬 목업 데이터
 │  ├─ app.js                 # 여행 화면 렌더링, 업로드, 지도 초기화
 │  ├─ google-auth.js         # Google Identity Services 로그인
-│  ├─ ticket-slider.js       # 지갑·일정 상세 공통 티켓 슬라이더
 │  ├─ theme.js               # 라이트·다크 모드 관리
-│  ├─ user-page.js            # 사용자 정보 화면
-│  ├─ wallet.js              # 통합 지갑 화면 및 패스 렌더링
-│  └─ config.local.js        # 로컬 키와 API 설정
+│  └─ config.local.js        # 로컬 키와 API 설정 (gitignore)
 ├─ backend/                  # 백엔드 (FastAPI + LangGraph + Upstage + Supabase)
 │  ├─ app/
 │  │  ├─ main.py             # 메인 API 서버 (포트 8000)
@@ -49,20 +46,25 @@ JunctionKorea2026/
 │  │  ├─ db.py               # Supabase 클라이언트
 │  │  ├─ api/routes.py       # /api/documents/parse + 조회 API 3종
 │  │  ├─ graph/              # LangGraph 문서 처리 에이전트
-│  │  │  ├─ build.py         # ingest→classify→(parse∥extract)→orchestrate→act
-│  │  │  ├─ nodes.py         # 노드 구현
+│  │  │  ├─ build.py         # ingest→[Studio Agent ∥ QR·바코드 디코딩]→act
+│  │  │  ├─ nodes.py         # 노드 구현 (Studio 결과 방어 파싱 + 폴백 포함)
 │  │  │  ├─ schemas.py       # 문서 유형 카테고리 + 유형별 추출 스키마
 │  │  │  └─ state.py         # 그래프 상태 정의
-│  │  ├─ services/upstage.py # Upstage API 클라이언트 (Classify/Parse/Extract/Solar)
-│  │  └─ tools/registry.py   # 액션 툴 레지스트리 (캘린더/알림/비용 스텁)
+│  │  ├─ services/
+│  │  │  ├─ studio_agent.py  # Upstage Studio Agent v2 클라이언트 (파이프라인 실행·수확)
+│  │  │  ├─ upstage.py       # Upstage v1 API 클라이언트 (Classify/Parse/Extract/Solar)
+│  │  │  └─ barcode.py       # QR·바코드 디코딩 (zxing-cpp + PyMuPDF, 원본 크롭 저장)
+│  │  └─ tools/registry.py   # 액션 툴 (일정 저장, 중복/충돌 검사, 캘린더 등록)
 │  ├─ backoffice/
 │  │  └─ main.py             # 백오피스 서버 (포트 8001) — Upstage 실험 + DB 브라우저
-│  ├─ dataset/               # 테스트용 실제 여행 문서 PDF (호텔 / 교통 / 입장권)
+│  ├─ calendar_tool.py       # Google Calendar OAuth + 이벤트/취소기한 리마인더 등록
+│  ├─ dataset/               # 테스트용 실제 여행 문서 PDF (호텔/교통/투어/여행계획서)
 │  ├─ supabase_schema.sql    # Supabase 테이블 생성 SQL
 │  ├─ requirements.txt
 │  └─ .env.example
 ├─ docs/
-│  └─ api.md                 # 백엔드 API 명세 (프론트 연동 기준 문서)
+│  ├─ api.md                 # 백엔드 API 명세 (프론트 연동 기준 문서)
+│  └─ presentation.md        # 발표 정리 (데모 시나리오, 아키텍처, Q&A)
 ├─ .gitignore
 └─ README.md
 ```

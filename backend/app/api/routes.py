@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app import config
 from app.db import ensure_bucket, get_db
@@ -182,7 +182,9 @@ async def parse_document(
 @router.get("/trips")
 async def list_trips():
     db = get_db()
-    trips = db.table("trips").select("*").order("created_at", desc=True).execute().data or []
+    trips = db.table("trips").select("*").execute().data or []
+    # 시작일이 빠른 여행이 위로, 시작일 없는(빈) 여행은 맨 아래
+    trips.sort(key=lambda t: (t.get("start_date") is None, t.get("start_date") or "", t.get("created_at") or ""))
     items = db.table("items").select("trip_id,has_conflict").execute().data or []
     conflict_count: dict[str, int] = {}
     for it in items:
@@ -232,6 +234,46 @@ async def get_document(doc_id: str):
         except Exception:
             original_url = None
     return {**d, "original_url": original_url}
+
+
+@router.get("/documents/{doc_id}/thumbnail")
+async def get_document_thumbnail(doc_id: str):
+    """문서 첫 페이지 썸네일 PNG (지도 말풍선/카드용). PDF는 렌더링, 이미지는 축소."""
+    res = (get_db().table("documents").select("storage_path,mime_type")
+           .eq("id", doc_id).execute())
+    if not res.data or not res.data[0].get("storage_path"):
+        raise HTTPException(404, "document not found")
+    d = res.data[0]
+    raw = get_db().storage.from_(config.STORAGE_BUCKET).download(d["storage_path"])
+    png = _make_thumbnail(raw, d.get("mime_type") or "application/pdf")
+    if png is None:
+        raise HTTPException(415, "thumbnail not supported for this file type")
+    return Response(png, media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+def _make_thumbnail(raw: bytes, mime: str, max_px: int = 320) -> bytes | None:
+    import cv2
+    import numpy as np
+    img = None
+    if mime == "application/pdf":
+        import pymupdf
+        doc = pymupdf.open(stream=raw, filetype="pdf")
+        if doc.page_count == 0:
+            return None
+        pix = doc[0].get_pixmap(dpi=72)
+        img = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, pix.n)
+        img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR if pix.n == 4 else cv2.COLOR_RGB2BGR)
+    elif mime.startswith("image/"):
+        img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    h, w = img.shape[:2]
+    scale = max_px / max(h, w)
+    if scale < 1:
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    ok, buf = cv2.imencode(".png", img)
+    return buf.tobytes() if ok else None
 
 
 @router.get("/items/{item_id}")

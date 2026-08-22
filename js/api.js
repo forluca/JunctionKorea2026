@@ -23,8 +23,9 @@ const DocketAPI = {
         const isJson = (response.headers.get('content-type') || '').includes('application/json');
         const payload = isJson ? await response.json() : await response.text();
         if (!response.ok) {
-            const detail = typeof payload === 'object' && payload?.detail ? `: ${payload.detail}` : '';
-            throw new Error(`API 요청 실패 (${response.status})${detail}`);
+            // 409(중복 등)는 body의 message에 사용자용 문구가 담김
+            const reason = typeof payload === 'object' ? (payload?.message || payload?.detail) : '';
+            throw new Error(reason || `API 요청 실패 (${response.status})`);
         }
         return payload;
     },
@@ -136,6 +137,7 @@ const DocketAPI = {
                         document_id: item.document_id,
                         file_name: item.document_file_name || `${item.type || 'document'}_voucher.pdf`, // API 응답 누락 대비 방어
                         doc_type: item.type || 'other',
+                        trip_id: trip.id,
                         trip_title: trip.title,
                         item_title: item.title,
                         created_at: item.created_at || item.starts_at || ''

@@ -7,88 +7,67 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
-    <link rel="stylesheet" href="css/selectTravel.css">
+    <link rel="stylesheet" href="css/main.css?v=20260823d">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    
-    
     <script>
         tailwind.config = {
             theme: { extend: { fontFamily: { sans: ['Pretendard', 'sans-serif'] } } }
         }
     </script>
 </head>
-<body class="h-screen w-screen overflow-hidden flex bg-[#f3f4f6] text-[#1e293b] antialiased state-list" id="app-container">
+<body class="h-screen w-screen overflow-hidden bg-[#e2e8f0] text-[#1e293b] antialiased state-list" id="app-container">
 
-    <nav class="w-[64px] h-full bg-[#1e3a8a] flex flex-col items-center py-6 border-r border-blue-900 shadow-lg z-30 flex-shrink-0">
-    <a href="#" class="app-logo w-10 h-10 bg-white text-[#1e3a8a] text-xl font-black flex items-center justify-center rounded-xl shadow-sm mb-10 text-center" aria-label="Docket 홈"><span class="logo-fallback">D.</span><img src="assets/logo.png" alt="Docket" onerror="this.hidden=true"></a>
-    <div class="flex flex-col w-full gap-2">
-        <button id="lnb-trip-button" class="w-full py-4 flex flex-col items-center gap-1.5 bg-blue-800 text-white border-l-4 border-white transition">
-            <i class="fa-solid fa-plane-departure text-xl"></i><span class="text-[11px] font-medium tracking-wide">나의 여행</span>
-        </button>
-        <!-- 통합 지갑 태그 완전 삭제 유지 -->
-        <button id="lnb-docs-button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition">
-            <i class="fa-solid fa-folder-open text-xl"></i><span class="text-[11px] font-medium tracking-wide">문서 보관함</span>
-        </button>
+    <!-- 지도: 전체 화면 배경 -->
+    <main id="map-area" class="map-area bg-[#e2e8f0] overflow-hidden">
+        <div id="map" class="absolute inset-0"></div>
+        <div id="map-fallback" class="absolute inset-0 flex items-center justify-center bg-slate-200/80 p-6 text-center">
+            <div class="bg-white/85 px-8 py-6 rounded-3xl backdrop-blur-md shadow-sm">
+                <i class="fa-solid fa-map-location-dot text-4xl text-[#1e3a8a] mb-3"></i>
+                <p id="map-status" class="text-lg font-bold text-gray-500">Google Maps API 키를 설정하면 지도가 표시됩니다.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- 좌측 플로팅 패널: 여행 목록 ↔ 타임라인 전환 -->
+    <div class="floating-left">
+        <!-- 여행 목록 뷰 -->
+        <aside id="list-panel">
+            <header class="h-[64px] px-5 border-b border-gray-200 flex items-center gap-3 flex-shrink-0">
+                <span class="w-7 h-7 bg-[#034694] text-white text-sm font-black flex items-center justify-center rounded-lg flex-shrink-0">D.</span>
+                <div class="relative flex-1">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                    <input type="text" id="trip-search-input" placeholder="여행 검색..." class="w-full pl-9 pr-3 py-2 bg-gray-100 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition outline-none">
+                </div>
+            </header>
+            <div id="trip-list-container" class="flex-1 min-h-0 overflow-y-auto p-4 pb-0 space-y-[18px] custom-scrollbar"></div>
+            <!-- 하단 광고: Upstage Studio -->
+            <div class="px-4 py-[18px] flex-shrink-0">
+                <a href="https://studio.upstage.ai/" target="_blank" rel="noopener" title="Upstage Studio 알아보기"
+                   class="relative block rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition">
+                    <span class="absolute top-2 left-2 z-10 w-5 h-5 flex items-center justify-center rounded-full bg-white/90 text-gray-500 shadow-sm">
+                        <i class="fa-solid fa-circle-info text-[13px]"></i>
+                    </span>
+                    <img src="assets/upstage-studio-ad.jpg" alt="Upstage Studio — Tackle Document Chaos with Intelligence" class="w-full block">
+                </a>
+            </div>
+        </aside>
+
+        <!-- 타임라인 뷰 (같은 패널에서 전환) -->
+        <section id="trip-panel">
+            <header class="h-[64px] px-4 border-b border-gray-200 flex items-center gap-3 flex-shrink-0">
+                <button id="close-timeline-button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <div class="truncate-text flex-1 flex flex-col justify-center" id="timeline-header-info"></div>
+            </header>
+            <div class="flex-1 min-h-0 overflow-y-auto flex flex-col custom-scrollbar">
+                <div id="timeline-container" class="p-5 space-y-4 relative"></div>
+            </div>
+        </section>
     </div>
-    <div class="mt-auto flex w-full flex-col gap-2">
-        <button id="user-info-button" type="button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="사용자 정보">
-            <i class="fa-solid fa-user text-xl"></i><span class="text-[11px] font-medium tracking-wide">내 정보</span>
-        </button>
-        <button id="lnb-signout-button" type="button" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition" title="로그아웃">
-            <i class="fa-solid fa-right-from-bracket text-xl"></i><span class="text-[11px] font-medium tracking-wide">로그아웃</span>
-        </button>
-    </div>
-</nav>
 
-    <!-- 패널 1: 여행 목록 -->
-    <aside id="list-panel" class="h-full bg-white border-r border-gray-200 flex-col z-20 flex-shrink-0 relative">
-        <!-- 문서 보관함 형식으로 통일된 헤더 -->
-        <header class="h-[76px] px-8 border-b border-gray-200 bg-white flex items-center justify-between flex-shrink-0">
-            <div class="flex items-center gap-3">
-                <i class="fa-solid fa-plane-departure text-blue-600 text-xl"></i>
-                <h2 class="text-xl font-bold text-gray-900">나의 여행</h2>
-            </div>
-        </header>
-        
-        <div id="trip-list-container" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-50/50 pb-28"></div>
-        <!-- 기존 '일정 추가' 버튼을 제거하고 인라인 드롭존 배치 -->
-        <div class="p-4 bg-white border-t border-gray-200 flex-shrink-0">
-            <div id="inline-drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-4 flex items-center justify-center gap-2 text-center cursor-pointer hover:bg-gray-50 transition bg-white">
-                <i class="fa-solid fa-cloud-arrow-up text-lg text-gray-400"></i>
-                <div class="text-xs text-gray-600 font-medium">문서를 여기에 끌어놓거나 클릭하여 추가</div>
-                <input type="file" id="inline-file-input" multiple accept=".pdf,image/*" class="hidden">
-            </div>
-            <div id="inline-file-list" class="mt-2 space-y-1.5 empty:hidden text-xs"></div>
-        </div>
-    </aside>
-
-    <!-- 패널 2: 타임라인 (다크 모드 배경색 클래스 통일) -->
-    <section id="trip-panel" class="h-full bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col z-20 flex-shrink-0 relative shadow-xl">
-        <header class="h-[76px] px-5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center gap-3 flex-shrink-0">
-            <button id="close-timeline-button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition">
-                <i class="fa-solid fa-arrow-left"></i>
-            </button>
-            <div class="truncate-text flex-1 flex flex-col justify-center" id="timeline-header-info"></div>
-        </header>
-        
-        <!-- 스크롤 영역 배경색을 패널과 동일하게 일치 -->
-        <div class="flex-1 min-h-0 overflow-y-auto flex flex-col bg-gray-50 dark:bg-gray-900">
-            <div id="timeline-container" class="p-5 space-y-4 relative"></div>
-        </div>
-
-        <!-- 하단 드롭존 영역 배경 통일 -->
-        <div class="p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
-            <div id="inline-drop-zone" class="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 flex items-center justify-center gap-2 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition bg-white dark:bg-gray-900">
-                <i class="fa-solid fa-cloud-arrow-up text-lg text-gray-400 dark:text-gray-500"></i>
-                <div class="text-xs text-gray-600 dark:text-gray-300 font-medium">문서를 여기에 끌어놓거나 클릭하여 추가</div>
-                <input type="file" id="inline-file-input" multiple accept=".pdf,image/*" class="hidden">
-            </div>
-            <div id="inline-file-list" class="mt-2 space-y-1.5 empty:hidden text-xs"></div>
-        </div>
-    </section>
-
-    <!-- 패널 3: 개별 일정 상세 -->
-    <section id="item-panel" class="h-full bg-white border-gray-200 flex-col z-10 flex-shrink-0 relative shadow-2xl">
+    <!-- 일정 상세: 두 번째 플로팅 카드 (state-item일 때) -->
+    <section id="item-panel">
         <div id="item-loading" class="absolute inset-0 z-20 items-center justify-center bg-white">
             <div class="w-full p-6">
                 <div class="detail-skeleton-title mb-3"></div>
@@ -101,43 +80,40 @@
             </div>
         </div>
         <header class="px-6 py-5 border-b border-gray-100 flex justify-between items-start bg-white" id="item-header"></header>
-        <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-gray-50/30 w-[450px]" id="item-content"></div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-gray-50/30" id="item-content"></div>
     </section>
 
-    <!-- 패널 5: 문서 보관함 (Google Drive Style) -->
-    <section id="docs-panel" class="h-full w-full bg-[#f8fafc] flex-col z-30 relative overflow-hidden flex-1">
-        <header class="h-[76px] px-8 border-b border-gray-200 bg-white flex items-center justify-between flex-shrink-0">
+    <!-- 문서 보관함: 지도 위 큰 플로팅 카드 -->
+    <section id="docs-panel">
+        <header class="h-[64px] px-6 border-b border-gray-200 bg-white flex items-center justify-between flex-shrink-0">
             <div class="flex items-center gap-3">
-                <i class="fa-solid fa-folder-open text-blue-600 text-xl"></i>
-                <h2 class="text-xl font-bold text-gray-900">문서 보관함</h2>
+                <i class="fa-solid fa-folder-open text-blue-600 text-base"></i>
+                <h2 class="text-lg font-bold text-gray-900">문서 보관함</h2>
             </div>
-            <div class="relative w-[300px]">
-                <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                <input type="text" id="docs-search-input" placeholder="문서명, 여행, 일정 검색..." class="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition outline-none">
+            <div class="flex items-center gap-3">
+                <div class="relative w-[300px]">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="docs-search-input" placeholder="문서명, 여행, 일정 검색..." class="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition outline-none">
+                </div>
+                <button id="close-docs-button" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition" title="닫기">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
             </div>
         </header>
         <div class="flex-1 overflow-y-auto p-8 custom-scrollbar">
-            <div id="docs-grid-container" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                <!-- 문서 카드가 자바스크립트에 의해 여기에 렌더링됩니다 -->
-            </div>
+            <div id="docs-grid-container" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-[18px]"></div>
         </div>
     </section>
 
-    <!-- 패널 4: 파일 업로드 -->
-    <aside id="upload-panel" class="h-full bg-white border-r border-gray-200 flex-col z-20 flex-shrink-0 relative shadow-xl">
-        <header class="h-[76px] px-5 border-b border-gray-200 bg-white flex items-center gap-3 flex-shrink-0">
+    <!-- 업로드 패널 (거의 사용 안 함 — app.js 호환용, 중앙 플로팅) -->
+    <aside id="upload-panel">
+        <header class="h-[64px] px-5 border-b border-gray-200 bg-white flex items-center gap-3 flex-shrink-0">
             <button id="close-upload-button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 transition">
                 <i class="fa-solid fa-arrow-left"></i>
             </button>
-            <h2 id="upload-panel-title" class="text-xl font-bold text-gray-900">새 여행 문서 업로드</h2>
+            <h2 id="upload-panel-title" class="text-base font-bold text-gray-900">새 여행 문서 업로드</h2>
         </header>
         <div class="flex-1 overflow-y-auto p-6 space-y-4 relative bg-gray-50/50">
-            <!-- 텍스트 입력 카드 영역 완전 삭제 완료 -->
-            
-            <ul class="text-xs text-gray-500 list-disc pl-4 mb-4">
-                <li>Drag and Drop 지원</li>
-                <li>PDF, PNG, JPG 다중 선택 지원</li>
-            </ul>
             <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition bg-white">
                 <i class="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-3"></i>
                 <p class="text-sm font-bold text-gray-700">마우스로 파일을 끌어오세요</p>
@@ -145,51 +121,58 @@
                 <input type="file" id="file-input" multiple accept=".pdf,image/*" class="hidden">
             </div>
             <div id="file-list-container" class="space-y-2 mt-4 empty:hidden"></div>
-            <div id="upload-progress-container" class="hidden mt-6">
-                <div class="flex justify-between text-xs mb-1">
-                    <span class="font-bold text-blue-700">문서 분석 중...</span>
-                    <span id="progress-text" class="text-gray-500">0%</span>
-                </div>
-                <div class="w-full bg-gray-200 rounded-full h-2">
-                    <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
-                </div>
-            </div>
         </div>
         <div class="p-4 bg-white border-t border-gray-100 flex gap-2">
             <button id="clear-files-button" class="w-1/3 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-3 rounded-xl transition">초기화</button>
             <button id="btn-parse" class="w-2/3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-3 rounded-xl transition opacity-50 cursor-not-allowed" disabled>문서 분석 시작</button>
         </div>
     </aside>
-    
-    <main id="map-area" class="map-area bg-[#e2e8f0] overflow-hidden z-0">
-        <div id="map" class="absolute inset-0"></div>
-        <div id="map-fallback" class="absolute inset-0 flex items-center justify-center bg-slate-200/80 p-6 text-center">
-            <div class="bg-white/85 px-8 py-6 rounded-3xl backdrop-blur-md shadow-sm">
-                <i class="fa-solid fa-map-location-dot text-4xl text-[#1e3a8a] mb-3"></i>
-                <p id="map-status" class="text-lg font-bold text-gray-500">Google Maps API 키를 설정하면 지도가 표시됩니다.</p>
-            </div>
-        </div>
-    </main>
 
-    <!-- 사용자 정보 모달 구조 예시 -->
+    <!-- 드롭 독: 평소엔 하단 중앙 알약, 파일 드래그 시 지도 영역 전체로 확장 -->
+    <div id="drop-dock" class="drop-dock">
+        <i class="fa-solid fa-cloud-arrow-up"></i>
+        <span id="drop-dock-text">문서를 화면으로 끌어오세요</span>
+    </div>
+
+    <!-- 플로팅 버튼: 우상단 내 정보 / 로그아웃, 우하단 문서 보관함 -->
+    <button id="user-info-button" type="button" class="floating-button" title="내 정보">
+        <i class="fa-solid fa-user"></i>
+    </button>
+    <button id="lnb-signout-button" type="button" class="floating-button" title="로그아웃">
+        <i class="fa-solid fa-right-from-bracket"></i>
+    </button>
+    <button id="open-docs-button" type="button" class="floating-button" title="문서 보관함">
+        <i class="fa-solid fa-folder-open"></i>
+    </button>
+
+    <!-- 사용자 정보 모달 -->
     <div id="user-info-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <!-- bg-white (라이트 모드 기본 배경)와 dark:bg-gray-800 (다크 모드 배경) 명시 -->
         <div class="relative bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-full max-w-md p-6 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700">
             <button id="close-user-modal-button" class="absolute right-4 top-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-300 transition">
                 <i class="fa-solid fa-xmark text-lg"></i>
             </button>
-            
             <h3 class="text-lg font-bold mb-4">내 정보</h3>
-            <div id="user-modal-content" class="space-y-3">
-                <!-- 동적 컨텐츠 -->
-            </div>
+            <div id="user-modal-content" class="space-y-3"></div>
         </div>
     </div>
 
     <script src="js/config.local.js"></script>
     <script src="js/theme.js"></script>
     <script src="js/google-auth.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/api.js?v=20260823d"></script>
+    <script src="js/app.js?v=20260823d"></script>
+    <script>
+        // 메인 화면 전용 바인딩: 플로팅 보관함 버튼 열기/닫기
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('open-docs-button')?.addEventListener('click', () => {
+                window.location.hash = 'docs';
+                UIRenderer.openDocs();
+            });
+            document.getElementById('close-docs-button')?.addEventListener('click', () => {
+                window.location.hash = '';
+                UIRenderer.closeDocs();
+            });
+        });
+    </script>
 </body>
 </html>
