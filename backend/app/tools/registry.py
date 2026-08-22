@@ -22,6 +22,8 @@ from app.db import get_db
 
 TOOL_REGISTRY: dict[str, Callable[[dict, dict], dict]] = {}
 
+ACCOMMODATION_TYPES = {"hotel", "accommodation", "lodging", "hostel", "숙박"}
+
 
 def tool(name: str):
     def deco(fn: Callable[[dict, dict], dict]):
@@ -62,21 +64,34 @@ def _parse_dt(value: Any) -> datetime | None:
     return dt
 
 
+def _is_accommodation(item_type: str | None) -> bool:
+    return isinstance(item_type, str) and item_type.strip().lower() in ACCOMMODATION_TYPES
+
+
 def check_conflicts(trip_id: str, starts_at: str | None, ends_at: str | None,
-                    exclude_item_id: str | None = None) -> list[dict]:
-    """같은 여행 내 시간대가 겹치는 기존 일정을 찾는다."""
+                    exclude_item_id: str | None = None,
+                    item_type: str | None = None) -> list[dict]:
+    """같은 여행 내 시간대가 겹치는 기존 일정을 찾는다.
+
+    숙박 일정은 체류 기간 안에 다른 일정을 수행하므로 충돌 검사에서 제외한다.
+    """
+    if _is_accommodation(item_type):
+        return []
+
     new_start = _parse_dt(starts_at)
     if new_start is None:
         return []
     new_end = _parse_dt(ends_at) or (new_start + timedelta(hours=2))
 
     rows = (
-        get_db().table("items").select("id,title,starts_at,ends_at")
+        get_db().table("items").select("id,title,type,starts_at,ends_at")
         .eq("trip_id", trip_id).execute().data or []
     )
     conflicts = []
     for row in rows:
         if exclude_item_id and row["id"] == exclude_item_id:
+            continue
+        if _is_accommodation(row.get("type")):
             continue
         s = _parse_dt(row.get("starts_at"))
         if s is None:
@@ -97,7 +112,11 @@ def build_item_row(state: dict) -> tuple[dict, list[dict]]:
 
     starts_at = fields.get("starts_at") or None
     ends_at = fields.get("ends_at") or None
-    conflicts = check_conflicts(trip_id, starts_at, ends_at) if trip_id else []
+    item_type = state.get("doc_type", "other")
+    conflicts = (
+        check_conflicts(trip_id, starts_at, ends_at, item_type=item_type)
+        if trip_id else []
+    )
     # 가격 정규화: -1(미표기 sentinel) → NULL / 0+통화 없음 → 미표기로 간주해 NULL
     # / 0+통화 있음 → 진짜 무료(0 유지) / 양수 → 그대로
     price = extracted.get("total_price")
@@ -108,7 +127,7 @@ def build_item_row(state: dict) -> tuple[dict, list[dict]]:
     row = {
         "trip_id": trip_id,
         "document_id": state.get("document_id"),
-        "type": state.get("doc_type", "other"),
+        "type": item_type,
         "title": fields.get("title") or "제목 없음",
         "starts_at": _iso_or_none(starts_at),
         "ends_at": _iso_or_none(ends_at),
@@ -201,11 +220,14 @@ def add_itinerary_bulk(args: dict, state: dict) -> dict:
     for it in items:
         starts_at = _iso_or_none(it.get("starts_at"))
         ends_at = _iso_or_none(it.get("ends_at"))
-        conflicts = conflicts_with_existing(starts_at, ends_at)
+        item_type = it.get("category") or "other"
+        conflicts = check_conflicts(
+            trip_id, starts_at, ends_at, item_type=item_type
+        )
         row = {
             "trip_id": trip_id,
             "document_id": state.get("document_id"),
-            "type": it.get("category") or "other",
+            "type": item_type,
             "title": it.get("title") or "제목 없음",
             "starts_at": starts_at,
             "ends_at": ends_at,
