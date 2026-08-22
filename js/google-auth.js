@@ -30,7 +30,7 @@ const GoogleAuth = {
         const displayName = payload.name || payload.email || 'Google 사용자';
         const email = payload.email || '';
 
-        sessionStorage.setItem('docket_user', JSON.stringify({ name: displayName, email }));
+        sessionStorage.setItem('docket_user', JSON.stringify({ id: payload.sub || payload.email, name: displayName, email }));
         sessionStorage.setItem('docket_auth_version', '2');
 
         if (GoogleAuth.isLoginPage()) {

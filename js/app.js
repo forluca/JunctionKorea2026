@@ -1,27 +1,3 @@
-// 여행 목록과 일정 데이터를 제공하는 임시 API입니다.
-const DocketAPI = {
-    fetchTrips: async () => {
-        return await new Promise(resolve => setTimeout(() => resolve([
-            { id: 'T001', title: '서유럽 3개국 일주', startDate: '2026.09.01', endDate: '2026.09.15', conflictCount: 1, status: 'active' },
-            { id: 'T002', title: '도쿄 주말 여행', startDate: '2026.07.12', endDate: '2026.07.14', conflictCount: 0, status: 'past' }
-        ]), 400));
-    },
-    fetchTripDetails: async (tripId) => {
-        return await new Promise(resolve => setTimeout(() => resolve([
-            { id: 'I001', type: 'flight', time: '10:00 AM', title: '인천(ICN) -> 파리(CDG)', desc: '대한항공 KE901', price: null, hasConflict: false },
-            { id: 'I002', type: 'hotel', time: '18:00 PM', title: '르 메르디앙 파리 에투알', desc: '체크인', price: 450000, hasConflict: false, refundDeadline: '오늘 23:59' },
-            { id: 'I003', type: 'museum', time: '19:00 PM', title: '루브르 박물관 야간 입장', desc: '예약번호: LVR-9928', price: 35000, hasConflict: true, conflictMsg: '물리적 이동 시간 부족' }
-        ]), 500));
-    },
-    fetchItemDetail: async (itemId) => {
-        return await new Promise(resolve => setTimeout(() => resolve({
-            id: 'I003', title: '루브르 박물관 야간 입장', timeStr: '2026.09.01 19:00 - 22:00', price: 35000, hasConflict: true,
-            conflictDetail: '이전 일정 종료 후 대중교통으로 1시간 15분이 소요되어 19:00 입장이 물리적으로 불가능합니다.',
-            qrCodeStr: 'LVR-9928-ABC'
-        }), 300));
-    }
-};
-
 // Google Cloud Console에서 발급한 Maps JavaScript API 키를 입력합니다.
 // 키가 비어 있으면 안내 화면을 유지해 로컬 파일에서도 페이지가 깨지지 않습니다.
 const GOOGLE_MAPS_API_KEY = window.GOOGLE_MAPS_API_KEY || '';

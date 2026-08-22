@@ -46,7 +46,13 @@ JunctionKorea2026/
 - `GET /api/trips/:tripId/items`
 - 프론트 함수: `DocketAPI.fetchTripDetails(tripId)`
 - 사용 위치: `UIRenderer.openTimeline(tripId, tripTitle)`
-- 응답 필드: `id`, `type`, `time`, `title`, `desc`, `price`, `hasConflict`, `conflictMsg`
+- 응답 필드: `id`, `tripId`, `type`, `time`, `title`, `desc`, `price`, `hasConflict`, `conflictMsg`, `qrCodeStr`, `location`
+- `qrCodeStr`가 있으면 통합 지갑에 예약 패스로 표시합니다.
+
+여행 목록은 로그인한 사용자의 Google subject ID를 기준으로 조회합니다.
+
+- 요청 예시: `GET /api/trips?userId={googleSub}`
+- 여행 응답 필드: `id`, `userId`, `title`, `startDate`, `endDate`, `conflictCount`, `status`
 
 ### 3. 일정 상세 조회
 
