@@ -1,8 +1,21 @@
 // Google Cloud Console에서 발급한 Maps JavaScript API 키를 입력합니다.
 // 키가 비어 있으면 안내 화면을 유지해 로컬 파일에서도 페이지가 깨지지 않습니다.
 const GOOGLE_MAPS_API_KEY = window.GOOGLE_MAPS_API_KEY || '';
+const DARK_MAP_STYLES = [
+    { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+    { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+    { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
+    { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
+    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
+    { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] }
+];
 
 const MapController = {
+    map: null,
+
+    getMapStyles: (theme = document.documentElement.dataset.theme) => theme === 'dark' ? DARK_MAP_STYLES : [],
+
     // 지도 로딩 실패 원인을 지도 영역 안에 표시합니다.
     showFallback: (message) => {
         document.getElementById('map').classList.add('hidden');
@@ -26,10 +39,12 @@ const MapController = {
             const map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 48.8566, lng: 2.3522 },
                 zoom: 12,
+                styles: MapController.getMapStyles(),
                 mapTypeControl: false,
                 streetViewControl: false,
                 fullscreenControl: false
             });
+            MapController.map = map;
 
             new google.maps.Marker({
                 map,
@@ -42,6 +57,10 @@ const MapController = {
             document.getElementById('map').classList.remove('hidden');
             document.getElementById('map-fallback').classList.add('hidden');
         };
+
+        window.addEventListener('docket-theme-change', event => {
+            if (MapController.map) MapController.map.setOptions({ styles: MapController.getMapStyles(event.detail) });
+        });
 
         const script = document.createElement('script');
         script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&callback=initGoogleMap`;
@@ -360,11 +379,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="user-profile-avatar">${displayName.charAt(0).toUpperCase()}</div>
                 <div><h2>${displayName}</h2><p>${email}</p></div>
             </div>
+            <div class="theme-setting"><span>화면 테마</span><div class="theme-options"><button type="button" data-theme-choice="light"><i class="fa-solid fa-sun"></i> 라이트</button><button type="button" data-theme-choice="dark"><i class="fa-solid fa-moon"></i> 다크</button></div></div>
             <dl class="user-detail-list">
                 <div><dt>로그인 방식</dt><dd>Google 계정</dd></div>
                 <div><dt>서비스 이용 상태</dt><dd class="user-status">이용 중</dd></div>
             </dl>
         `;
+        ThemeController.bind(document.getElementById('user-modal-content'));
         document.getElementById('user-info-modal').classList.remove('hidden');
     });
     document.getElementById('close-user-modal-button').addEventListener('click', () => {

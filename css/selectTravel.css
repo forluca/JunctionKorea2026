@@ -41,6 +41,21 @@
 .user-profile-avatar { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 50%; background: #1e3a8a; color: #ffffff; font-size: 25px; font-weight: 800; }
 .user-profile-summary h2 { margin: 0 0 5px; color: #111827; font-size: 18px; }
 .user-profile-summary p { margin: 0; color: #64748b; font-size: 13px; }
+.theme-setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 24px 0; padding: 16px 0; border-bottom: 1px solid #e5e7eb; color: #64748b; font-size: 13px; font-weight: 700; }
+.theme-options { display: flex; gap: 6px; }.theme-options button { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 7px; background: #ffffff; color: #64748b; font-size: 11px; cursor: pointer; }.theme-options button.is-selected { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }
+[data-theme="dark"] body:not(.login-page) { background: #111827 !important; color: #e5e7eb; }
+[data-theme="dark"] #list-panel, [data-theme="dark"] #trip-panel, [data-theme="dark"] #item-panel, [data-theme="dark"] #upload-panel, [data-theme="dark"] #item-header, [data-theme="dark"] #map-fallback { background-color: #1f2937 !important; border-color: #374151 !important; }
+[data-theme="dark"] #trip-list-container, [data-theme="dark"] #timeline-container, [data-theme="dark"] #item-content, [data-theme="dark"] #upload-panel > div { background-color: #111827 !important; }
+[data-theme="dark"] #list-panel h1, [data-theme="dark"] #trip-panel h2, [data-theme="dark"] #item-panel h2, [data-theme="dark"] #upload-panel h2, [data-theme="dark"] #item-content h4, [data-theme="dark"] #trip-list-container h3 { color: #f9fafb !important; }
+[data-theme="dark"] #trip-list-container .bg-white, [data-theme="dark"] #timeline-container .bg-white, [data-theme="dark"] #upload-panel .bg-white { background-color: #1f2937 !important; border-color: #374151 !important; }
+[data-theme="dark"] #upload-panel textarea { background: #111827; border-color: #4b5563; color: #f9fafb; }
+[data-theme="dark"] .user-modal-card, [data-theme="dark"] .user-card { background: #1f2937; border-color: #374151; }
+[data-theme="dark"] .user-modal-card h1, [data-theme="dark"] .user-card h1, [data-theme="dark"] .user-profile-summary h2 { color: #f9fafb; }
+[data-theme="dark"] .user-profile-summary, [data-theme="dark"] .theme-options button { background: #111827; border-color: #4b5563; }
+[data-theme="dark"] .theme-setting { border-color: #374151; }
+[data-theme="dark"] .theme-options button.is-selected { background: #172554; border-color: #60a5fa; color: #bfdbfe; }
+[data-theme="dark"] .user-detail-list { border-color: #374151; }
+[data-theme="dark"] .user-detail-list div { border-color: #374151; }
 .user-detail-list { margin: 24px 0; border-top: 1px solid #e5e7eb; }
 .user-detail-list div { display: flex; justify-content: space-between; gap: 20px; padding: 16px 0; border-bottom: 1px solid #e5e7eb; }
 .user-detail-list dt { color: #64748b; font-size: 13px; }
@@ -90,6 +105,37 @@
 .wallet-empty i { font-size: 22px; }.wallet-empty p { margin: 9px 0 0; font-size: 12px; }
 .wallet-loading, .wallet-error { padding: 60px 20px; color: #64748b; text-align: center; }.wallet-loading i { color: #2563eb; font-size: 24px; animation: spin 1s linear infinite; }.wallet-loading p, .wallet-error p { margin: 14px 0 5px; font-size: 14px; font-weight: 700; }.wallet-error i { color: #dc2626; font-size: 24px; }.wallet-error small { font-size: 11px; }
 @media (max-width: 700px) { .wallet-main { padding: 32px 20px 52px; }.wallet-header { align-items: flex-start; flex-direction: column; }.wallet-pass { grid-template-columns: 1fr 112px; }.wallet-pass-divider { display: none; }.wallet-pass-code { grid-column: 2; grid-row: 1; }.wallet-pass-main { padding: 20px; }.wallet-pass h3 { font-size: 16px; } }
+
+/* 테마 색상은 이 블록에서 일괄 관리합니다. */
+:root { --surface-page: #f5f7fb; --surface-panel: #ffffff; --surface-muted: #f8fafc; --surface-subtle: #f1f5f9; --text-primary: #111827; --text-secondary: #64748b; --text-muted: #94a3b8; --border-default: #e5e7eb; }
+[data-theme="dark"] { --surface-page: #0f172a; --surface-panel: #1e293b; --surface-muted: #111827; --surface-subtle: #273449; --text-primary: #f8fafc; --text-secondary: #cbd5e1; --text-muted: #94a3b8; --border-default: #475569; }
+[data-theme="dark"] body { background-color: var(--surface-page) !important; color: var(--text-primary) !important; }
+[data-theme="dark"] #app-container > nav > a:first-child, [data-theme="dark"] .wallet-logo { background: #ffffff !important; color: #1e3a8a !important; }
+[data-theme="dark"] .bg-white, [data-theme="dark"] .bg-white\/85 { background-color: var(--surface-panel) !important; }
+[data-theme="dark"] .bg-gray-50, [data-theme="dark"] .bg-gray-50\/50, [data-theme="dark"] .bg-gray-50\/30, [data-theme="dark"] .bg-slate-200, [data-theme="dark"] .bg-gray-100 { background-color: var(--surface-muted) !important; }
+[data-theme="dark"] .bg-gray-200 { background-color: #334155 !important; }
+[data-theme="dark"] .text-black, [data-theme="dark"] .text-gray-900, [data-theme="dark"] .text-gray-800, [data-theme="dark"] .text-gray-700, [data-theme="dark"] .text-gray-600, [data-theme="dark"] .text-gray-500, [data-theme="dark"] .text-gray-400 { color: var(--text-primary) !important; }
+[data-theme="dark"] .text-gray-500, [data-theme="dark"] .text-gray-400, [data-theme="dark"] .text-gray-600 { color: var(--text-secondary) !important; }
+[data-theme="dark"] .text-gray-300 { color: var(--text-muted) !important; }
+[data-theme="dark"] .border-gray-100, [data-theme="dark"] .border-gray-200, [data-theme="dark"] .border-gray-300 { border-color: var(--border-default) !important; }
+[data-theme="dark"] .bg-red-50 { background-color: #451a1a !important; }
+[data-theme="dark"] .text-red-600, [data-theme="dark"] .text-red-700, [data-theme="dark"] .text-red-800 { color: #fca5a5 !important; }
+[data-theme="dark"] #app-container > aside, [data-theme="dark"] #app-container > section { color: var(--text-primary); }
+[data-theme="dark"] #app-container .shadow-sm, [data-theme="dark"] #app-container .shadow-xl, [data-theme="dark"] #app-container .shadow-2xl { box-shadow: 0 10px 28px rgba(0,0,0,.25); }
+[data-theme="dark"] #app-container input, [data-theme="dark"] #app-container textarea { background-color: var(--surface-muted) !important; color: var(--text-primary) !important; border-color: var(--border-default) !important; }
+[data-theme="dark"] #map-fallback > div { background-color: rgba(30,41,59,.92) !important; }
+[data-theme="dark"] #map-status { color: var(--text-secondary) !important; }
+[data-theme="dark"] .list-skeleton-card, [data-theme="dark"] .timeline-skeleton-card, [data-theme="dark"] .detail-skeleton-card { background: var(--surface-panel); border-color: var(--border-default); }
+[data-theme="dark"] .list-skeleton-title, [data-theme="dark"] .list-skeleton-line, [data-theme="dark"] .timeline-skeleton-title, [data-theme="dark"] .timeline-skeleton-text, [data-theme="dark"] .detail-skeleton-title, [data-theme="dark"] .detail-skeleton-subtitle, [data-theme="dark"] .detail-skeleton-line, [data-theme="dark"] .detail-skeleton-circle { background: #334155; }
+[data-theme="dark"] .wallet-page { background: var(--surface-page); }
+[data-theme="dark"] .wallet-header h1, [data-theme="dark"] .wallet-trip-header h2, [data-theme="dark"] .wallet-pass h3 { color: var(--text-primary); }
+[data-theme="dark"] .wallet-header p:last-child, [data-theme="dark"] .wallet-trip-header p, [data-theme="dark"] .wallet-pass-meta, [data-theme="dark"] .wallet-pass-location { color: var(--text-secondary); }
+[data-theme="dark"] .wallet-pass, [data-theme="dark"] .wallet-empty { background: var(--surface-panel); border-color: var(--border-default); }
+[data-theme="dark"] .wallet-pass-code { background: var(--surface-muted); }
+[data-theme="dark"] .wallet-pass-divider { border-color: var(--border-default); }
+[data-theme="dark"] .wallet-pass-divider span { background: var(--surface-page); }
+[data-theme="dark"] .wallet-pass-code strong { color: var(--text-primary); }
+[data-theme="dark"] .wallet-loading, [data-theme="dark"] .wallet-error { color: var(--text-secondary); }
 
 /* 패널이 전환될 때 너비와 투명도가 자연스럽게 바뀝니다. */
 #trip-panel { transition: width 0.3s ease-in-out; }

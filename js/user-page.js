@@ -23,12 +23,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p>${email}</p>
             </div>
         </div>
+        <div class="theme-setting"><span>화면 테마</span><div class="theme-options"><button type="button" data-theme-choice="light"><i class="fa-solid fa-sun"></i> 라이트</button><button type="button" data-theme-choice="dark"><i class="fa-solid fa-moon"></i> 다크</button></div></div>
         <dl class="user-detail-list">
             <div><dt>로그인 방식</dt><dd>Google 계정</dd></div>
             <div><dt>서비스 이용 상태</dt><dd class="user-status">이용 중</dd></div>
         </dl>
         <button id="user-signout-button" class="user-signout-button" type="button">로그아웃</button>
     `;
+    ThemeController.bind(document.getElementById('user-profile-content'));
 
     document.getElementById('user-signout-button').addEventListener('click', () => {
         sessionStorage.removeItem('docket_user');
