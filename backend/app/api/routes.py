@@ -182,7 +182,7 @@ async def list_trips():
         if it.get("has_conflict"):
             conflict_count[it["trip_id"]] = conflict_count.get(it["trip_id"], 0) + 1
     return [
-        {**_trip_out(t), "conflictCount": conflict_count.get(t["id"], 0)} for t in trips
+        {**_trip_out(t), "conflict_count": conflict_count.get(t["id"], 0)} for t in trips
     ]
 
 
@@ -192,19 +192,39 @@ async def list_trip_items(trip_id: str):
         get_db().table("items").select("*").eq("trip_id", trip_id)
         .order("starts_at", desc=False).execute().data or []
     )
+    # 모든 DB 컬럼(camelCase) + 타임라인용 computed 필드(time, desc)
     return [
         {
-            "id": r["id"],
-            "type": r.get("type"),
+            **_item_out(r),
             "time": _hhmm(r.get("starts_at")),
-            "title": r.get("title"),
             "desc": r.get("location") or "",
-            "price": r.get("price"),
-            "hasConflict": bool(r.get("has_conflict")),
-            "conflictMsg": r.get("conflict_msg") or "",
         }
         for r in rows
     ]
+
+
+@router.get("/documents/{doc_id}")
+async def get_document(doc_id: str):
+    """문서 상세 — 모든 컬럼 + 원본 파일 서명 URL(24시간) + 파싱 결과.
+
+    프론트 '원본 문서 보기': originalUrl을 <iframe>/<embed>·새 탭으로 열거나,
+    parsedHtml을 직접 렌더링하면 됨 (HWP 등 뷰어 없는 형식도 표시 가능).
+    """
+    res = get_db().table("documents").select("*").eq("id", doc_id).execute()
+    if not res.data:
+        raise HTTPException(404, "document not found")
+    d = res.data[0]
+    original_url = None
+    if d.get("storage_path"):
+        try:
+            signed = get_db().storage.from_(config.STORAGE_BUCKET).create_signed_url(
+                d["storage_path"], 86400
+            )
+            original_url = (signed.get("signedURL") or signed.get("signed_url")
+                            or signed.get("signedUrl"))
+        except Exception:
+            original_url = None
+    return {**d, "original_url": original_url}
 
 
 @router.get("/items/{item_id}")
@@ -213,25 +233,31 @@ async def get_item(item_id: str):
     if not res.data:
         raise HTTPException(404, "item not found")
     r = res.data[0]
+    # 연결된 원본 문서의 서명 URL (24시간) — "원본 문서 보기"용
+    document_url = None
+    document_file_name = None
+    if r.get("document_id"):
+        doc = (get_db().table("documents").select("storage_path,file_name")
+               .eq("id", r["document_id"]).execute().data or [])
+        if doc and doc[0].get("storage_path"):
+            document_file_name = doc[0].get("file_name")
+            try:
+                signed = get_db().storage.from_(config.STORAGE_BUCKET).create_signed_url(
+                    doc[0]["storage_path"], 86400
+                )
+                document_url = (signed.get("signedURL") or signed.get("signed_url")
+                                or signed.get("signedUrl"))
+            except Exception:
+                document_url = None
+
+    # 모든 DB 컬럼(필드명 그대로) + 상세용 computed 필드
+    # (qr_images는 raw 경로 대신 서명 URL 버전으로 덮어씀)
     return {
-        "id": r["id"],
-        "tripId": r.get("trip_id"),
-        "documentId": r.get("document_id"),
-        "type": r.get("type"),
-        "title": r.get("title"),
-        "timeStr": _time_range(r.get("starts_at"), r.get("ends_at")),
-        "startsAt": r.get("starts_at"),
-        "endsAt": r.get("ends_at"),
-        "location": r.get("location") or "",
-        "price": r.get("price"),
-        "currency": r.get("currency") or "",
-        "bookingRef": r.get("booking_ref") or "",
-        "cancellationDeadline": r.get("cancellation_deadline"),
-        "hasConflict": bool(r.get("has_conflict")),
-        "conflictDetail": r.get("conflict_msg") or "",
-        "qrCodeStr": r.get("qr_code") or r.get("booking_ref") or "",
-        "qrImages": _signed_qr_images(r.get("qr_images")),
-        "notes": r.get("notes") or [],
+        **_item_out(r),
+        "time_str": _time_range(r.get("starts_at"), r.get("ends_at")),
+        "qr_images": _signed_qr_images(r.get("qr_images")),
+        "document_url": document_url,
+        "document_file_name": document_file_name,
     }
 
 
@@ -253,6 +279,11 @@ def _signed_qr_images(qr_images: list | None) -> list[dict]:
 
 # ─────────────────────────── helpers ───────────────────────────
 
+# 응답 필드명 규칙 (프론트와 합의): DB 컬럼명(snake_case) 그대로 반환.
+# computed 필드도 snake_case로 통일 (status, conflict_count, time, desc, time_str,
+# qr_code_str, qr_images, document_url, original_url)
+
+
 def _trip_out(t: dict | None) -> dict | None:
     if not t:
         return None
@@ -261,27 +292,15 @@ def _trip_out(t: dict | None) -> dict | None:
     end_date = t.get("end_date")
     today = datetime.now().date().isoformat()
     status = "past" if end_date and end_date < today else "active"
-    return {
-        "id": t["id"],
-        "title": t.get("title"),
-        "startDate": t.get("start_date"),
-        "endDate": end_date,
-        "status": status,
-    }
+    return {**t, "status": status}
 
 
 def _item_out(r: dict) -> dict:
+    """items 행의 모든 컬럼(DB 필드명 그대로) + computed 필드."""
     return {
-        "id": r["id"],
-        "type": r.get("type"),
-        "title": r.get("title"),
-        "startsAt": r.get("starts_at"),
-        "endsAt": r.get("ends_at"),
-        "location": r.get("location"),
-        "price": r.get("price"),
-        "hasConflict": bool(r.get("has_conflict")),
-        "conflictMsg": r.get("conflict_msg") or "",
-        "qrCodeStr": r.get("qr_code") or r.get("booking_ref") or "",
+        **r,
+        "conflict_msg": r.get("conflict_msg") or "",
+        "qr_code_str": r.get("qr_code") or r.get("booking_ref") or "",
         "notes": r.get("notes") or [],
     }
 
