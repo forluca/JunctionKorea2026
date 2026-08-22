@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docket 로그인</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
+    <link rel="stylesheet" href="css/selectTravel.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body class="login-page">
+    <main class="login-shell">
+        <section class="login-card" aria-labelledby="login-title">
+            <div class="login-mark">D.</div>
+            <p class="login-eyebrow">DOCUMENT AGENT FOR TRAVELERS</p>
+            <h1 id="login-title">여행의 모든 문서를<br>한곳에서 관리하세요.</h1>
+            <p class="login-description">예약 문서와 일정을 안전하게 모아보고, 여행에 집중하세요.</p>
+            <div id="google-login-button" class="login-button-area"></div>
+            <div id="google-user-container" class="hidden"></div>
+            <p class="login-notice">Google 계정으로 로그인하면 서비스를 이용할 수 있습니다.</p>
+        </section>
+        <p class="login-footer">DOCKET · YOUR TRAVEL DOCUMENTS, ORGANIZED</p>
+    </main>
+    <script src="js/config.local.js"></script>
+    <script src="js/google-auth.js"></script>
+</body>
+</html>

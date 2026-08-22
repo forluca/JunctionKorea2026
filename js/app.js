@@ -357,6 +357,11 @@ const UploadController = {
 
 // DOM이 준비된 뒤 초기 데이터와 파일 업로드 기능을 연결합니다.
 document.addEventListener('DOMContentLoaded', () => {
+    if (!sessionStorage.getItem('docket_user') || sessionStorage.getItem('docket_auth_version') !== '2') {
+        sessionStorage.removeItem('docket_user');
+        window.location.replace('login.html');
+        return;
+    }
     MapController.init();
     UIRenderer.renderTripList();
     UploadController.initDragAndDrop();
@@ -368,4 +373,5 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('trip-text-input').addEventListener('input', UploadController.renderFileList);
     document.getElementById('clear-files-button').addEventListener('click', UploadController.clearFiles);
     document.getElementById('btn-parse').addEventListener('click', UploadController.startParsing);
+    document.getElementById('lnb-signout-button').addEventListener('click', GoogleAuth.signOut);
 });
