@@ -20,17 +20,52 @@
 
 ```text
 JunctionKorea2026/
-├─ main.html                 # 애플리케이션 진입점
+├─ main.html                 # 프론트엔드 진입점
 ├─ css/
 │  └─ selectTravel.css       # 패널 상태, 애니메이션, 스켈레톤, 지도 레이아웃
 ├─ js/
 │  ├─ app.js                 # API 목업, 화면 렌더링, 업로드, 지도 초기화
 │  └─ config.local.js        # 로컬 환경 설정
+├─ backend/                  # 백엔드 (FastAPI + LangGraph + Upstage + Supabase)
+│  ├─ app/
+│  │  ├─ main.py             # 메인 API 서버 (포트 8000)
+│  │  ├─ config.py           # .env 로드 (UPSTAGE_API, SUPABASE_API, SUPABASE_URL)
+│  │  ├─ db.py               # Supabase 클라이언트
+│  │  ├─ api/routes.py       # /api/documents/parse + 조회 API 3종
+│  │  ├─ graph/              # LangGraph 문서 처리 에이전트
+│  │  │  ├─ build.py         # ingest→classify→(parse∥extract)→orchestrate→act
+│  │  │  ├─ nodes.py         # 노드 구현
+│  │  │  ├─ schemas.py       # 문서 유형 카테고리 + 유형별 추출 스키마
+│  │  │  └─ state.py         # 그래프 상태 정의
+│  │  ├─ services/upstage.py # Upstage API 클라이언트 (Classify/Parse/Extract/Solar)
+│  │  └─ tools/registry.py   # 액션 툴 레지스트리 (캘린더/알림/비용 스텁)
+│  ├─ backoffice/
+│  │  └─ main.py             # 백오피스 서버 (포트 8001) — Upstage 실험 + DB 브라우저
+│  ├─ supabase_schema.sql    # Supabase 테이블 생성 SQL
+│  ├─ requirements.txt
+│  └─ .env.example
+├─ docs/
+│  ├─ api.md                 # 백엔드 API 명세 (프론트 연동 기준 문서)
+│  └─ submission.md          # 제출용 Punchline / Description 원문
 ├─ .gitignore
 └─ README.md
 ```
 
+## 백엔드 실행 방법
+
+```bash
+cd backend
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # 최초 1회
+.venv/bin/uvicorn app.main:app --reload --port 8000                  # 메인 API
+.venv/bin/uvicorn backoffice.main:app --reload --port 8001           # 백오피스(실험용)
+```
+
+사전 준비: 리포 루트 `.env`에 `UPSTAGE_API`, `SUPABASE_API`, `SUPABASE_URL` 설정 후,
+`backend/supabase_schema.sql`을 Supabase SQL Editor에서 실행.
+
 ## API 구현 대상
+
+> ✅ 아래 4개 엔드포인트는 백엔드에 구현되어 있습니다. 요청/응답 상세 스키마와 예시는 **[docs/api.md](docs/api.md)** 를 기준으로 연동하세요.
 
 현재 `js/app.js`에는 서버 연결 전 동작 확인을 위한 목업 함수가 있습니다. 아래 엔드포인트를 구현한 뒤 각 함수 내부의 목업 응답을 실제 `fetch` 요청으로 교체합니다.
 
