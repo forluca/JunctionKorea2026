@@ -13,11 +13,17 @@
     <nav class="w-[64px] h-full bg-[#1e3a8a] flex flex-col items-center py-6 border-r border-blue-900 shadow-lg z-30 flex-shrink-0">
         <a href="main.html" class="app-logo w-10 h-10 bg-white text-[#1e3a8a] text-xl font-black flex items-center justify-center rounded-xl shadow-sm mb-10 text-center" aria-label="Docket 홈"><span class="logo-fallback">D.</span><img src="assets/logo.png" alt="Docket" onerror="this.hidden=true"></a>
         <div class="flex flex-col w-full gap-2">
-            <a href="main.html" class="w-full py-4 flex flex-col items-center gap-1.5 text-blue-200 hover:text-white hover:bg-blue-800/50 border-l-4 border-transparent transition">
+            <!-- 나의 여행으로 이동 -->
+            <a href="main.html" class="w-full py-4 flex flex-col items-center gap-1.5 transition border-l-4 text-blue-200 hover:text-white hover:bg-blue-800/50 border-transparent">
                 <i class="fa-solid fa-plane-departure text-xl"></i><span class="text-[11px] font-medium tracking-wide">나의 여행</span>
             </a>
-            <a href="wallet.html" class="w-full py-4 flex flex-col items-center gap-1.5 bg-blue-800 text-white border-l-4 border-white transition">
+            <!-- 해시(#docs)를 이용한 딥링킹 문서 보관함 이동 -->
+            <!-- 현재 페이지(통합 지갑) 활성화 상태 -->
+            <button class="w-full py-4 flex flex-col items-center gap-1.5 transition border-l-4 bg-blue-800 text-white border-white cursor-default">
                 <i class="fa-solid fa-wallet text-xl"></i><span class="text-[11px] font-medium tracking-wide">통합 지갑</span>
+            </button>
+            <a href="main.html#docs" class="w-full py-4 flex flex-col items-center gap-1.5 transition border-l-4 text-blue-200 hover:text-white hover:bg-blue-800/50 border-transparent">
+                <i class="fa-solid fa-folder-open text-xl"></i><span class="text-[11px] font-medium tracking-wide">문서 보관함</span>
             </a>
         </div>
         <div class="mt-auto flex w-full flex-col gap-2">
@@ -29,15 +35,19 @@
             </button>
         </div>
     </nav>
-    <main class="wallet-main">
-        <header class="wallet-header">
-            <div>
-                <p class="wallet-eyebrow">YOUR PASSES</p>
-                <h1>통합 지갑</h1>
-                <p>여행별 예약 패스를 한곳에서 확인하세요.</p>
+    <!-- 문서 보관함 패널 구조를 차용한 메인 래퍼 -->
+    <main class="h-full w-full bg-[#f8fafc] flex flex-col z-30 relative overflow-hidden flex-1">
+        <header class="h-[76px] px-8 border-b border-gray-200 bg-white flex items-center justify-between flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-wallet text-blue-600 text-xl"></i>
+                <h2 class="text-xl font-bold text-gray-900">통합 지갑</h2>
             </div>
         </header>
-        <div id="wallet-content" class="wallet-content"></div>
+        
+        <div class="flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <!-- 기존 티켓 렌더링을 위한 ID와 클래스 엄격히 유지 -->
+            <div id="wallet-content" class="wallet-content max-w-7xl mx-auto"></div>
+        </div>
     </main>
     <script src="js/config.local.js"></script>
     <script src="js/theme.js"></script>
