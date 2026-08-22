@@ -210,24 +210,58 @@ def register_calendar(args: dict, state: dict) -> dict:
     한 번 실행해 브라우저 OAuth 인증 → token.json 생성. 그 전에는 error로 스킵됨.
     """
     fields = state.get("item_fields") or {}
+    extracted = state.get("extracted") or {}
     title = args.get("title") or fields.get("title") or "여행 일정"
     start = _parse_dt(args.get("starts_at") or fields.get("starts_at"))
-    if start is None:
-        return {"status": "skipped", "detail": "시작 시각이 없어 캘린더 등록 생략"}
-    end = _parse_dt(args.get("ends_at") or fields.get("ends_at")) or (start + timedelta(hours=2))
+    cancellation_deadline = (
+        args.get("cancellation_deadline")
+        or extracted.get("cancellation_deadline")
+        or fields.get("cancellation_deadline")
+    )
+    if start is None and not cancellation_deadline:
+        return {
+            "status": "skipped",
+            "detail": "시작 시각과 취소 기한이 없어 캘린더 등록 생략",
+        }
+    end = (
+        _parse_dt(args.get("ends_at") or fields.get("ends_at"))
+        or (start + timedelta(hours=2) if start else None)
+    )
+    notes = state.get("notes") or []
+    description = (
+        "\n".join(str(note) for note in notes if note)
+        if isinstance(notes, list)
+        else str(notes)
+    ) or None
 
     try:
         import calendar_tool  # backend/calendar_tool.py (팀원 구현)
 
-        event = calendar_tool.create_event(
-            title=title,
-            start_time=start.strftime("%Y-%m-%dT%H:%M:%S"),
-            end_time=end.strftime("%Y-%m-%dT%H:%M:%S"),
-            description="\n".join(state.get("notes") or []) or None,
-            location=args.get("location") or fields.get("location"),
-            reminder_minutes=60,  # 리마인드 통합: 일정 1시간 전 팝업 알림
-        )
-        return {"status": "done", "event_link": event.get("htmlLink")}
+        service = calendar_tool.get_calendar_service()
+        result = {"status": "done"}
+        if start and end:
+            event = calendar_tool.create_event(
+                title=title,
+                start_time=start.strftime("%Y-%m-%dT%H:%M:%S"),
+                end_time=end.strftime("%Y-%m-%dT%H:%M:%S"),
+                description=description,
+                location=args.get("location") or fields.get("location"),
+                service=service,
+            )
+            result["event_link"] = event.get("htmlLink")
+
+        if cancellation_deadline:
+            cancellation_event = calendar_tool.create_cancellation_deadline_reminder(
+                {
+                    "title": title,
+                    "cancellation_deadline": cancellation_deadline,
+                    "cancellation_message": description,
+                },
+                service=service,
+            )
+            result["cancellation_event_link"] = cancellation_event.get("htmlLink")
+
+        return result
     except FileNotFoundError:
         return {"status": "error",
                 "detail": "credentials.json 없음 — backend/에 Google OAuth 키를 두고 "
